@@ -24,6 +24,11 @@ import { getEnv, isHostedMode, type EnvSource } from "./utils/env.ts";
 /** What is stored. Null means "not set". */
 export type AppSettings = {
   allowedEmailDomains: string[];
+  /**
+   * Senders may connect an AI assistant to prepare drafts for them. Off
+   * until an administrator turns it on. See assistant/settings.ts.
+   */
+  assistantConnections: boolean;
   /** The install's own color as "#rrggbb", or null for the default. */
   brandColor: string | null;
   emailReadyAt: number | null;
@@ -96,6 +101,7 @@ export type SetupRequiredDecision = {
 
 type AppSettingsRow = {
   allowed_email_domains: string[] | null;
+  assistant_connections: boolean;
   brand_color: string | null;
   email_ready_at: number | null;
   logo_hash: string | null;
@@ -137,6 +143,7 @@ const LATER_SETTINGS_COLUMNS = [
   ["part11_mode"], // 20261115090000_part11_mode
   ["require_two_factor"], // 20261117090000_sign_in_security
   ["session_idle_minutes", "session_max_hours"], // 20261117100000_session_controls
+  ["assistant_connections"], // 20261118090000_assistant_connections
 ] as const;
 
 type LaterSettingsColumn = (typeof LATER_SETTINGS_COLUMNS)[number][number];
@@ -159,6 +166,7 @@ const SETTINGS_COLUMNS = settingsColumnsAfter(LATER_SETTINGS_COLUMNS.length);
 // did before settings existed, so an upgraded deployment does not change
 // until someone decides otherwise.
 const UNSET_SETTINGS: AppSettings = {
+  assistantConnections: false,
   allowedEmailDomains: [],
   brandColor: null,
   emailReadyAt: null,
@@ -229,6 +237,7 @@ function readErrorCode(error: unknown): unknown {
 function mapSettingsRow(row: StoredSettingsRow): AppSettings {
   return {
     allowedEmailDomains: row.allowed_email_domains ?? [],
+    assistantConnections: row.assistant_connections ?? false,
     brandColor: row.brand_color ?? null,
     emailReadyAt: row.email_ready_at,
     logoVersion: row.logo_hash ?? null,
@@ -405,10 +414,11 @@ async function saveSettingsLocked(
         require_two_factor,
         session_idle_minutes,
         session_max_hours,
+        assistant_connections,
         created_at,
         updated_at
       )
-      values (true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $11, $12, $13, $14, $15, $16, $10, $10)
+      values (true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $11, $12, $13, $14, $15, $16, $17, $10, $10)
       on conflict (id) do update set
         allowed_email_domains = excluded.allowed_email_domains,
         email_ready_at = excluded.email_ready_at,
@@ -425,6 +435,7 @@ async function saveSettingsLocked(
         require_two_factor = excluded.require_two_factor,
         session_idle_minutes = excluded.session_idle_minutes,
         session_max_hours = excluded.session_max_hours,
+        assistant_connections = excluded.assistant_connections,
         updated_at = excluded.updated_at
       returning ${SETTINGS_COLUMNS}
     `,
@@ -445,6 +456,7 @@ async function saveSettingsLocked(
       next.requireTwoFactor,
       next.sessionIdleMinutes,
       next.sessionMaxHours,
+      next.assistantConnections,
     ],
   );
 

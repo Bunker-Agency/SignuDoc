@@ -146,14 +146,14 @@ export function usesTwoFactor(user: object): boolean {
   );
 }
 
-type Actor = {
+export type Actor = {
   email: string;
   ipAddress?: string | null;
   userAgent?: string | null;
   userId: string;
 };
 
-async function lockActor(actor: Actor, tx: DbExecutor) {
+export async function lockActor(actor: Actor, tx: DbExecutor) {
   const row = await queryOne<{ role: string; twoFactorEnabled: boolean }>(
     tx,
     `SELECT role, "twoFactorEnabled" AS "twoFactorEnabled" FROM "user" WHERE id = $1`,

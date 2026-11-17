@@ -10,6 +10,7 @@ import {
 
 const stored: AppSettings = {
   allowedEmailDomains: ["acme.com"],
+  assistantConnections: false,
   brandColor: null,
   emailReadyAt: null,
   logoVersion: null,

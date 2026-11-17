@@ -7,6 +7,7 @@ import { FieldShell, ShellButton } from "@/components/shared/form-shell";
 import { BrandingPanel } from "@/components/settings/branding-panel";
 import { Part11Panel } from "@/components/settings/part11-panel";
 import { PeoplePanel } from "@/components/settings/people-panel";
+import { AssistantPanel } from "@/components/settings/assistant-panel";
 import { SecurityPanel } from "@/components/settings/security-panel";
 import { SignerDataPanel } from "@/components/settings/signer-data-panel";
 import type { EmailDnsRecord, EmailStatus } from "@/lib/email-status";
@@ -407,6 +408,10 @@ export function OrganizationSettings({
             initialSessionIdleMinutes={values.sessionIdleMinutes}
             initialSessionMaxHours={values.sessionMaxHours}
           />
+        ) : null}
+
+        {!values.hosted ? (
+          <AssistantPanel initialEnabled={values.assistantConnections} />
         ) : null}
 
         {!values.hosted ? (
