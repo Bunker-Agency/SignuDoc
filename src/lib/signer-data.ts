@@ -27,11 +27,13 @@ export class SignerDataError extends Error {
 
 type SignerEnvelopeRow = {
   declineReason: string | null;
+  company: string | null;
   declinedAt: number | null;
   envelopeCreatedAt: number;
   envelopeId: string;
   envelopeStatus: string;
   envelopeTitle: string;
+  jobTitle: string | null;
   /** Sent in Part 11 mode: never erased here. */
   part11: boolean;
   signedAt: number | null;
@@ -69,6 +71,8 @@ async function listSignerEnvelopes(
         s.signed_at AS "signedAt",
         s.declined_at AS "declinedAt",
         s.decline_reason AS "declineReason",
+        s.job_title AS "jobTitle",
+        s.company AS "company",
         e.id AS "envelopeId",
         e.title AS "envelopeTitle",
         e.status AS "envelopeStatus",

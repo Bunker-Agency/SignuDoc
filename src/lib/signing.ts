@@ -43,6 +43,12 @@ import {
   signerRecordSchema,
   type CopyRecipientRecord,
 } from "./schemas/signer.ts";
+import {
+  isSignerDetailFieldType,
+  signerDetailsAsked,
+  signerDetailValueForField,
+  type SignerDetails,
+} from "./signer-details.ts";
 import { getBranding } from "./settings.ts";
 import {
   checkSigningCredentials,
@@ -934,10 +940,13 @@ function isFieldSubmissionComplete(
     case "signature":
     case "initials":
     case "date":
+    case "name":
       return typeof update.submittedAt === "number";
     case "text":
     case "number":
     case "dropdown":
+    case "job_title":
+    case "company":
       return typeof update.value === "string" && update.value.trim().length > 0;
     case "checkbox":
       return update.checked === true;
@@ -996,6 +1005,7 @@ function buildSignedAuditEvent(input: {
   signatureMethods: readonly string[];
   requestMeta: SigningRequestMeta;
   signer: ReturnType<typeof signerRecordSchema.parse>;
+  signerDetails: SignerDetails;
   submittedAt: number;
   timezoneOffsetMinutes: number;
 }): AuditEventRecord {
@@ -1015,6 +1025,12 @@ function buildSignedAuditEvent(input: {
       authMethods: [...input.authMethods],
       signatureMethods: [...input.signatureMethods],
       timezoneOffsetMinutes: input.timezoneOffsetMinutes,
+      ...(input.signerDetails.jobTitle
+        ? { jobTitle: input.signerDetails.jobTitle }
+        : {}),
+      ...(input.signerDetails.company
+        ? { company: input.signerDetails.company }
+        : {}),
       ...(input.part11 ? { part11: input.part11 } : {}),
       ...(input.providerSignature
         ? { providerSignature: input.providerSignature }
@@ -2156,6 +2172,28 @@ function buildSignerSubmission(
     relevantSubmissions.set(submission.fieldId, submission);
   }
 
+  // A detail is kept only when the signer has a box for it, so an answer to
+  // a question nobody asked never reaches the signer's record.
+  const asked = signerDetailsAsked(currentSignerFields);
+  const signerDetails: SignerDetails = {
+    company: asked.company
+      ? (parsedInput.signerDetails?.company ?? null)
+      : null,
+    jobTitle: asked.jobTitle
+      ? (parsedInput.signerDetails?.jobTitle ?? null)
+      : null,
+  };
+
+  if (
+    (asked.company === "required" && !signerDetails.company) ||
+    (asked.jobTitle === "required" && !signerDetails.jobTitle)
+  ) {
+    throw new SigningMutationError(
+      "Complete all required fields before finishing.",
+      400,
+    );
+  }
+
   // Names this submission's drawn signatures apart from any other's.
   const submissionId = randomUUID();
   const localDateValue = formatLocalSigningDate(
@@ -2234,6 +2272,26 @@ function buildSignerSubmission(
       continue;
     }
 
+    if (isSignerDetailFieldType(field.type)) {
+      // Nobody types into these boxes: they show the signer's name as the
+      // sender entered it, and the one answer given for the job title and
+      // company.
+      const value = signerDetailValueForField(field.type, {
+        name: context.signer.name,
+        ...signerDetails,
+      });
+
+      fieldUpdates.set(field.id, {
+        checked: null,
+        fieldId: field.id,
+        imageKey: null,
+        inputMethod: "auto",
+        submittedAt: value ? submittedAt : null,
+        value,
+      });
+      continue;
+    }
+
     if (
       field.type === "text" ||
       field.type === "number" ||
@@ -2298,6 +2356,7 @@ function buildSignerSubmission(
     currentSignerId,
     drawnSignatureUploads,
     fieldUpdates,
+    signerDetails,
   };
 }
 
@@ -2366,6 +2425,7 @@ export async function submitSigningForToken(
     currentSignerId,
     drawnSignatureUploads,
     fieldUpdates,
+    signerDetails,
   } = buildSignerSubmission(context, parsedInput, submittedAt);
   const presentedTokenHash = hashOpaqueToken(token);
 
@@ -2436,6 +2496,7 @@ export async function submitSigningForToken(
       ],
       requestMeta,
       signer: context.signer,
+      signerDetails,
       submittedAt,
       timezoneOffsetMinutes: parsedInput.clientTimezoneOffsetMinutes,
     });
@@ -2536,7 +2597,9 @@ export async function submitSigningForToken(
               signing_token_hash = NULL,
               signing_token_expires_at = NULL,
               signed_at = $1,
-              updated_at = $2
+              updated_at = $2,
+              job_title = $6,
+              company = $7
             WHERE id = $3
               AND envelope_id = $4
               AND status = 'notified'
@@ -2548,6 +2611,8 @@ export async function submitSigningForToken(
             currentSignerId,
             context.envelope.id,
             presentedTokenHash,
+            signerDetails.jobTitle,
+            signerDetails.company,
           ],
         );
 
@@ -2801,7 +2866,9 @@ export async function submitSigningForToken(
               signing_token_hash = NULL,
               signing_token_expires_at = NULL,
               signed_at = $1,
-              updated_at = $2
+              updated_at = $2,
+              job_title = $6,
+              company = $7
             WHERE id = $3
               AND envelope_id = $4
               AND status = 'notified'
@@ -2813,6 +2880,8 @@ export async function submitSigningForToken(
             currentSignerId,
             context.envelope.id,
             presentedTokenHash,
+            signerDetails.jobTitle,
+            signerDetails.company,
           ],
         );
 

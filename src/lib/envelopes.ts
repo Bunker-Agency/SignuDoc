@@ -263,7 +263,9 @@ function shouldCountFieldForSignerSummary(
   if (
     field.type === "text" ||
     field.type === "number" ||
-    field.type === "dropdown"
+    field.type === "dropdown" ||
+    field.type === "job_title" ||
+    field.type === "company"
   ) {
     return true;
   }
