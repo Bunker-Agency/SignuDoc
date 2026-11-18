@@ -25,6 +25,9 @@ export type AnchoredField = {
   label?: string;
   options?: string[];
   group?: string;
+  /** Size in PDF points; each overrides the automatic size on its own. */
+  width?: number;
+  height?: number;
 };
 
 /**
@@ -51,6 +54,26 @@ export const DEFAULT_FIELD_SIZE_FRACTIONS: Record<
 };
 
 export const ANCHOR_GAP_PT = 4;
+
+/** A line-fit field is this many times as tall as the text it sits by... */
+export const LINE_FIT_FACTOR = 1.6;
+/** ...but never shorter than this, in points... */
+export const LINE_FIT_MIN_PT = 14;
+
+/**
+ * The field types that are fitted to the line of text they are placed by.
+ * They are never taller than their default size. Signature, initials,
+ * checkbox and radio keep their default sizes.
+ */
+export const LINE_FIT_FIELD_TYPES: ReadonlySet<FieldType> = new Set<FieldType>([
+  "name",
+  "date",
+  "text",
+  "number",
+  "job_title",
+  "company",
+  "dropdown",
+]);
 
 const NO_TEXT_MESSAGE =
   "This page has no text, so fields can't be placed by text. Place them on the prepare page instead.";
@@ -208,14 +231,46 @@ function findMatches(pages: PageText[], needle: string): Match[] {
   return matches;
 }
 
+/**
+ * A field's size in points: what the assistant asked for, else fitted to the
+ * line of text for text-like fields, else the default.
+ */
+export function fieldSizePt(
+  field: Pick<AnchoredField, "type" | "width" | "height">,
+  anchorBox: Box,
+  page: Pick<PageText, "widthPt" | "heightPt">,
+  position: AnchorPosition = "right",
+): { width: number; height: number } {
+  const fractions = DEFAULT_FIELD_SIZE_FRACTIONS[field.type];
+  const defaultHeight = fractions.height * page.heightPt;
+  const automaticHeight = LINE_FIT_FIELD_TYPES.has(field.type)
+    ? Math.min(
+        defaultHeight,
+        Math.max(LINE_FIT_MIN_PT, LINE_FIT_FACTOR * anchorBox.height),
+      )
+    : defaultHeight;
+
+  const defaultWidth = fractions.width * page.widthPt;
+
+  return {
+    height: field.height ?? automaticHeight,
+    // Over a placeholder the automatic width covers it; an explicit one wins.
+    width:
+      field.width ??
+      (position === "over"
+        ? Math.max(defaultWidth, anchorBox.width)
+        : defaultWidth),
+  };
+}
+
 function place(
   position: AnchorPosition,
   box: Box,
   size: { width: number; height: number },
   page: PageText,
 ): { x: number; y: number; width: number; height: number } {
-  let width = size.width * page.widthPt;
-  const height = Math.min(size.height * page.heightPt, page.heightPt);
+  let width = size.width;
+  const height = Math.min(size.height, page.heightPt);
   let x: number;
   let y: number;
 
@@ -226,7 +281,6 @@ function place(
     x = box.x;
     y = box.y + box.height + ANCHOR_GAP_PT;
   } else {
-    width = Math.max(width, box.width);
     x = box.x + box.width / 2 - width / 2;
     y = box.y + box.height / 2 - height / 2;
   }
@@ -245,10 +299,16 @@ export function resolveAnchoredFields(
   signers: ReadonlyArray<{ id: string; email: string }>,
   fields: AnchoredField[],
 ):
-  | { ok: true; placements: FieldPlacementInput[] }
+  | {
+      ok: true;
+      placements: FieldPlacementInput[];
+      /** Each placement's size in points, in the same order. */
+      sizesPt: Array<{ widthPt: number; heightPt: number }>;
+    }
   | { ok: false; problems: Array<{ index: number; message: string }> } {
   const problems: Array<{ index: number; message: string }> = [];
   const placements: FieldPlacementInput[] = [];
+  const sizesPt: Array<{ widthPt: number; heightPt: number }> = [];
 
   fields.forEach((field, index) => {
     const wanted = field.signer.trim().toLowerCase();
@@ -309,7 +369,7 @@ export function resolveAnchoredFields(
       return;
     }
 
-    const size = DEFAULT_FIELD_SIZE_FRACTIONS[field.type];
+    const size = fieldSizePt(field, match.box, page, field.anchor.position);
     const placed = place(field.anchor.position, match.box, size, page);
     const width = round(placed.width / page.widthPt);
     const height = round(placed.height / page.heightPt);
@@ -348,9 +408,10 @@ export function resolveAnchoredFields(
     }
 
     placements.push(placement);
+    sizesPt.push({ heightPt: placed.height, widthPt: placed.width });
   });
 
   return problems.length > 0
     ? { ok: false, problems }
-    : { ok: true, placements };
+    : { ok: true, placements, sizesPt };
 }

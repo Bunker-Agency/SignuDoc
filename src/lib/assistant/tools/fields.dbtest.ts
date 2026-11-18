@@ -176,14 +176,32 @@ test("place_fields saves fields at the anchors", async () => {
   assert.equal(result.isError, false, result.text);
 
   const body = JSON.parse(result.text) as {
-    placed: Array<{ page: number; signerEmail: string; type: string }>;
+    placed: Array<{
+      heightPt: number;
+      page: number;
+      signerEmail: string;
+      type: string;
+      widthPt: number;
+    }>;
     prepareUrl: string;
     reviewUrl: string;
   };
 
   assert.deepEqual(body.placed, [
-    { page: 1, signerEmail: "dana@example.com", type: "signature" },
-    { page: 1, signerEmail: "dana@example.com", type: "date" },
+    {
+      heightPt: 55.4,
+      page: 1,
+      signerEmail: "dana@example.com",
+      type: "signature",
+      widthPt: 146.9,
+    },
+    {
+      heightPt: 19.2,
+      page: 1,
+      signerEmail: "dana@example.com",
+      type: "date",
+      widthPt: 73.4,
+    },
   ]);
   assert.ok(body.prepareUrl.endsWith(`/envelopes/${envelopeId}/prepare`));
 
@@ -233,6 +251,41 @@ test("place_fields places Name, Job title and Company boxes at Text's size", asy
     byType.get("company")?.width,
     DEFAULT_FIELD_SIZE_FRACTIONS.text.width,
   );
+});
+
+test("place_fields takes a width and height in points", async () => {
+  const ada = await createUser("Ada");
+  const envelopeId = await createDraft(ada.userId);
+  const result = await callTool(ada, "place_fields", {
+    envelopeId,
+    fields: [
+      {
+        anchor: { position: "right", text: "Date:" },
+        height: 20,
+        signer: "dana@example.com",
+        type: "text",
+        width: 153,
+      },
+    ],
+  });
+
+  assert.equal(result.isError, false, result.text);
+
+  const body = JSON.parse(result.text) as {
+    placed: Array<{ heightPt: number; widthPt: number }>;
+  };
+
+  assert.equal(body.placed[0]?.widthPt, 153);
+  assert.equal(body.placed[0]?.heightPt, 20);
+
+  const saved = await getPrepareEnvelopeDataForUser(ada.userId, envelopeId, {
+    database,
+  });
+  const text = saved?.fields[0];
+
+  assert.ok(text);
+  assert.ok(Math.abs(text.width - 153 / 612) < 1e-5);
+  assert.ok(Math.abs(text.height - 20 / 792) < 1e-5);
 });
 
 test("place_fields refuses an optional Name box", async () => {
@@ -310,13 +363,20 @@ test("get_document_text returns page text and refuses a sent envelope", async ()
 
   const body = JSON.parse(result.text) as {
     hasTextLayer: boolean;
-    pages: Array<{ pageNumber: number; text: string }>;
+    pages: Array<{
+      heightPt: number;
+      pageNumber: number;
+      text: string;
+      widthPt: number;
+    }>;
     truncated: boolean;
   };
 
   assert.equal(body.hasTextLayer, true);
   assert.equal(body.truncated, false);
   assert.equal(body.pages[0]?.pageNumber, 1);
+  assert.equal(body.pages[0]?.widthPt, 612);
+  assert.equal(body.pages[0]?.heightPt, 792);
   assert.match(body.pages[0]?.text ?? "", /Client signature/);
 
   const blankId = await createDraft(ada.userId, blankPdf);
