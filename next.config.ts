@@ -36,6 +36,13 @@ const nextConfig: NextConfig = {
       // reads a PDF's text (src/lib/pdf-text.ts), which tracing can't see.
       "./node_modules/pdfjs-dist/legacy/build/pdf.mjs",
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      // pdf.js needs DOMMatrix the moment it loads, and in Node it takes it
+      // from @napi-rs/canvas, required by a computed path tracing can't see.
+      // Without it every text read fails with "DOMMatrix is not defined".
+      // The wildcard picks up whichever native build npm installed for the
+      // build machine (linux-x64-gnu on Vercel).
+      "./node_modules/@napi-rs/canvas/**",
+      "./node_modules/@napi-rs/canvas-*/**",
     ],
   },
 };
