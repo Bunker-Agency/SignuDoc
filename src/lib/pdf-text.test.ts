@@ -28,3 +28,21 @@ test("readPdfText returns text boxes with a top-left origin", async () => {
   assert.ok(Math.abs(item.y + item.height - 92) < 1);
   assert.ok(item.width > 50);
 });
+
+// pdf.js loads @napi-rs/canvas (for DOMMatrix) and its own worker by
+// computed paths, so Vercel's file tracing misses them unless next.config
+// lists them. The first live run on Vercel failed with "DOMMatrix is not
+// defined" because the canvas package was missing from the function.
+test("deployed API functions include what pdf.js loads at runtime", async () => {
+  const { default: nextConfig } = await import("../../next.config.ts");
+  const included = nextConfig.outputFileTracingIncludes?.["/api/**"] ?? [];
+
+  for (const path of [
+    "./node_modules/pdfjs-dist/legacy/build/pdf.mjs",
+    "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+    "./node_modules/@napi-rs/canvas/**",
+    "./node_modules/@napi-rs/canvas-*/**",
+  ]) {
+    assert.ok(included.includes(path), `${path} is traced into /api/**`);
+  }
+});
