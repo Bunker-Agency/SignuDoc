@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.25",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@pdf-lib/fontkit": "^1.1.1",
     "@signpdf/placeholder-pdf-lib": "3.3.0",
     "@signpdf/signer-p12": "3.3.0",

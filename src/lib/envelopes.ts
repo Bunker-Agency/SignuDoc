@@ -297,11 +297,17 @@ type PersistedFieldRecord = FieldRecord & {
 
 export type DashboardEnvelopeListItem = {
   contextLine: string;
+  /** Unix seconds. Set by listEnvelopesForUser, for callers that want it. */
+  createdAt?: number;
   createdAtLabel: string;
   /** Out for signature and past its deadline. */
   expired?: boolean;
   id: string;
   searchableEmails: readonly string[];
+  /** Unix seconds; null for a draft. Set by listEnvelopesForUser. */
+  sentAt?: number | null;
+  /** Who signs, in order. Set by listEnvelopesForUser. */
+  signers?: readonly { email: string; name: string; status: string }[];
   status: EnvelopeRecord["status"];
   /** What the status pill says: the status, or how far signing has got. */
   statusLabel: string;
@@ -1846,6 +1852,7 @@ export async function listEnvelopesForUser(
 
     return {
       contextLine: buildDashboardContextLine(envelope, signers, fields),
+      createdAt: envelope.createdAt,
       createdAtLabel: formatShortDate(envelope.createdAt),
       expired: isEnvelopeExpired(envelope, Math.floor(Date.now() / 1000)),
       id: envelope.id,
@@ -1854,6 +1861,12 @@ export async function listEnvelopesForUser(
         ...signers,
         ...(copyRecipientsByEnvelope.get(envelope.id) ?? []),
       ].map((recipient) => recipient.email),
+      sentAt: envelope.sentAt ?? null,
+      signers: signers.map(({ email, name, status }) => ({
+        email,
+        name,
+        status,
+      })),
       status: envelope.status,
       statusLabel: buildDashboardStatusLabel(envelope, signers),
       title: envelope.title,
