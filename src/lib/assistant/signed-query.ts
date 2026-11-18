@@ -92,3 +92,20 @@ export function ssoResumePath(search: string | URLSearchParams): string | null {
 
   return `/api/auth/oauth2/authorize?${request.toString()}`;
 }
+
+/**
+ * Where the sign-in page may send someone on to after signing in, from its
+ * `next` parameter: only a one-time upload link, as `/upload/<token>` and
+ * nothing more (a token is base64url). Anything else, an absolute address,
+ * `//host`, a backslash, an encoded form or any other path, is null, so the
+ * parameter can't be used to send anyone elsewhere.
+ */
+export function uploadResumePath(
+  search: string | URLSearchParams,
+): string | null {
+  const next = new URLSearchParams(search).get("next");
+
+  return next !== null && /^\/upload\/[A-Za-z0-9_-]{1,128}$/.test(next)
+    ? next
+    : null;
+}

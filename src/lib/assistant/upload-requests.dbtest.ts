@@ -419,3 +419,66 @@ test("status reports waiting, expired and nothing for another user", async () =>
     null,
   );
 });
+
+test("a failure after the link is claimed gives the link back and leaves no draft", async () => {
+  const context = await createUser();
+  const request = await createUploadRequest(
+    { context, title: "Storage down" },
+    database,
+  );
+  const working = options().storageService;
+  const broken = {
+    ...working,
+    putObject: async () => {
+      throw new Error("storage is down");
+    },
+  } as typeof working;
+
+  await assert.rejects(
+    consumeUploadRequest(
+      { sessionUserId: null, sourcePdf: pdfInput(), token: request.token },
+      { database, storageService: broken },
+    ),
+    /storage is down/,
+  );
+  assert.equal(await draftCount(context.userId), 0);
+
+  const row = await database.query(
+    `select used_at, envelope_id from public.assistant_upload_requests where id = $1`,
+    [request.uploadId],
+  );
+
+  assert.equal(row.rows[0].used_at, null);
+  assert.equal(row.rows[0].envelope_id, null);
+
+  await consumeUploadRequest(
+    { sessionUserId: null, sourcePdf: pdfInput(), token: request.token },
+    options(),
+  );
+  assert.equal(await draftCount(context.userId), 1);
+});
+
+test("the link and its draft are written together, and many racing uploads don't starve the pool", async () => {
+  const context = await createUser();
+  const requests = await Promise.all(
+    Array.from({ length: 30 }, (_, index) =>
+      createUploadRequest({ context, title: `Bulk ${index}` }, database),
+    ),
+  );
+  const results = await Promise.all(
+    requests.map((request) =>
+      consumeUploadRequest(
+        { sessionUserId: null, sourcePdf: pdfInput(), token: request.token },
+        options(),
+      ),
+    ),
+  );
+  const linked = await database.query(
+    `select count(*)::int as n from public.assistant_upload_requests where user_id = $1 and used_at is not null and envelope_id is not null`,
+    [context.userId],
+  );
+
+  assert.equal(results.length, 30);
+  assert.equal(linked.rows[0].n, 30);
+  assert.equal(await draftCount(context.userId), 30);
+});

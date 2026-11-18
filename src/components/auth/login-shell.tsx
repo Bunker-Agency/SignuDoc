@@ -11,7 +11,11 @@ import {
   type SsoOption,
 } from "@/components/auth/sso-button";
 import { FieldShell, ShellButton } from "@/components/shared/form-shell";
-import { signedOAuthQuery, ssoResumePath } from "@/lib/assistant/signed-query";
+import {
+  signedOAuthQuery,
+  ssoResumePath,
+  uploadResumePath,
+} from "@/lib/assistant/signed-query";
 import { authClient } from "@/lib/auth/client";
 import { forgotPasswordSchema, loginSchema } from "@/lib/schemas/auth";
 import {
@@ -357,7 +361,7 @@ function LiveLoginShell({
       return;
     }
 
-    router.replace("/dashboard");
+    router.replace(uploadResumePath(window.location.search) ?? "/dashboard");
   }
 
   async function handleForgotPasswordSubmit(event: FormEvent<HTMLFormElement>) {
@@ -465,7 +469,11 @@ function LiveLoginShell({
           setValues((currentValues) => ({ ...currentValues, password: "" }));
           setBannerMessage(message);
         }}
-        onSignedIn={() => router.replace("/dashboard")}
+        onSignedIn={() =>
+          router.replace(
+            uploadResumePath(window.location.search) ?? "/dashboard",
+          )
+        }
         onStopped={setHandOffStop}
       />
     );

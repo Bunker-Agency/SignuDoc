@@ -3,7 +3,11 @@
 import { useState } from "react";
 
 import { ShellButton } from "@/components/shared/form-shell";
-import { signedOAuthQuery, ssoResumePath } from "@/lib/assistant/signed-query";
+import {
+  signedOAuthQuery,
+  ssoResumePath,
+  uploadResumePath,
+} from "@/lib/assistant/signed-query";
 
 // "Continue with <provider>": hands the visitor to the organization's
 // identity provider (lib/auth/sso.ts). Better Auth sends them back to
@@ -58,14 +62,22 @@ export function SsoButton({
 
     try {
       const origin = window.location.origin;
-      const resumePath = ssoResumePath(window.location.search);
+      const resumePath =
+        ssoResumePath(window.location.search) ??
+        uploadResumePath(window.location.search);
       const signedQuery = signedOAuthQuery(window.location.search);
       const callbackURL = `${origin}${resumePath ?? "/dashboard"}`;
       const response = await fetch("/api/auth/sign-in/social", {
         body: JSON.stringify({
           callbackURL,
           // Back to this page, still able to carry on, to try again.
-          errorCallbackURL: `${origin}/login${signedQuery ? `?${signedQuery}` : ""}`,
+          errorCallbackURL: `${origin}/login${
+            signedQuery
+              ? `?${signedQuery}`
+              : uploadResumePath(window.location.search)
+                ? `?next=${encodeURIComponent(uploadResumePath(window.location.search) ?? "")}`
+                : ""
+          }`,
           newUserCallbackURL: callbackURL,
           provider: "sso",
         }),

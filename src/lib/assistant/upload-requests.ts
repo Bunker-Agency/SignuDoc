@@ -85,8 +85,13 @@ function toStatus(row: StatusRow, now: number): UploadRequestStatus {
   return {
     envelopeId: row.envelope_id,
     expiresAt,
+    // A claimed link with no draft yet is still being received.
     status:
-      row.used_at !== null ? "done" : expiresAt <= now ? "expired" : "waiting",
+      row.used_at !== null && row.envelope_id !== null
+        ? "done"
+        : row.used_at === null && expiresAt <= now
+          ? "expired"
+          : "waiting",
   };
 }
 
@@ -168,9 +173,17 @@ type LockedRow = {
 };
 
 /**
- * Makes the draft for an upload link and uses the link up. The row is
- * locked for the whole of it, so two uploads racing on one link make one
- * draft. When the PDF is refused the link is left as it was.
+ * Makes the draft for an upload link and uses the link up, once.
+ *
+ * Step 1 claims the link in a short transaction of its own: the row is
+ * locked (`FOR UPDATE`), checked, and marked used before anything else
+ * happens, so two uploads racing on one link cannot both go on. Step 2
+ * makes the draft on its own connection, with no row lock held across the
+ * PDF parsing and the storage write; the link's `envelope_id` is written in
+ * the same transaction as the draft, so they commit together. If step 2
+ * fails (a PDF that can't be read, storage down) the claim is cleared and
+ * the link works again. If the server dies between the two steps the link
+ * stays used: it fails closed, and a new link is asked for.
  *
  * With no `sessionUserId` the link itself is the credential (a shell agent
  * sending the PDF), so the assistant connection that asked for it must
@@ -189,34 +202,36 @@ export async function consumeUploadRequest(
   }
 
   const now = input.now ?? Math.floor(Date.now() / 1000);
-
-  return withTransaction(async (tx) => {
-    const row = await queryOne<LockedRow>(
+  const row = await withTransaction(async (tx) => {
+    const locked = await queryOne<LockedRow>(
       tx,
       `select id, user_id, client_id, client_name, title, expires_at, used_at, envelope_id
          from assistant_upload_requests where token_hash = $1 for update`,
       [hashOpaqueToken(input.token)],
     );
 
-    if (!row || row.user_id === null) {
+    if (!locked || locked.user_id === null) {
       throw new UploadRequestError(404, GONE_MESSAGE);
     }
 
-    if (row.used_at !== null) {
+    if (locked.used_at !== null) {
       throw new UploadRequestError(
         409,
         "This upload link has already been used.",
       );
     }
 
-    if (Number(row.expires_at) <= now) {
+    if (Number(locked.expires_at) <= now) {
       throw new UploadRequestError(
         410,
         "This upload link has expired. Ask your assistant for a new one.",
       );
     }
 
-    if (input.sessionUserId !== null && input.sessionUserId !== row.user_id) {
+    if (
+      input.sessionUserId !== null &&
+      input.sessionUserId !== locked.user_id
+    ) {
       throw new UploadRequestError(
         403,
         "This upload link belongs to someone else.",
@@ -227,7 +242,7 @@ export async function consumeUploadRequest(
       const connection = await queryOne(
         tx,
         `select 1 from assistant_connections where user_id = $1 and client_id = $2`,
-        [row.user_id, row.client_id],
+        [locked.user_id, locked.client_id],
       );
 
       if (!connection) {
@@ -238,6 +253,15 @@ export async function consumeUploadRequest(
       }
     }
 
+    await tx.query(
+      `update assistant_upload_requests set used_at = $2 where id = $1`,
+      [locked.id, now],
+    );
+
+    return locked as LockedRow & { user_id: string };
+  }, database);
+
+  try {
     const draft = await createDraftEnvelope(
       row.user_id,
       {
@@ -249,14 +273,33 @@ export async function consumeUploadRequest(
         sourcePdf: input.sourcePdf,
         title: row.title,
       },
-      storageService ? { database, storageService } : { database },
-    );
-
-    await tx.query(
-      `update assistant_upload_requests set used_at = $2, envelope_id = $3 where id = $1`,
-      [row.id, now, draft.envelope.id],
+      {
+        database,
+        ...(storageService ? { storageService } : {}),
+        withinTransaction: async (tx, envelopeId) => {
+          await tx.query(
+            `update assistant_upload_requests set envelope_id = $2 where id = $1`,
+            [row.id, envelopeId],
+          );
+        },
+      },
     );
 
     return { envelopeId: draft.envelope.id };
-  }, database);
+  } catch (error) {
+    // Nothing was made, so the link is given back.
+    await database
+      .query(
+        `update assistant_upload_requests set used_at = null where id = $1 and envelope_id is null`,
+        [row.id],
+      )
+      .catch((releaseError) =>
+        console.error(
+          "[assistant] Could not release an upload link:",
+          releaseError,
+        ),
+      );
+
+    throw error;
+  }
 }

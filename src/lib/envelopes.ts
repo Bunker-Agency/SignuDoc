@@ -127,6 +127,14 @@ import { escapeHtml } from "./utils/html.ts";
 
 type CreateDraftEnvelopeOptions = {
   database?: DbPool;
+  /**
+   * Run inside the transaction that inserts the draft, after its rows, so
+   * whatever it writes commits with the draft or not at all.
+   */
+  withinTransaction?: (
+    tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
+    envelopeId: string,
+  ) => Promise<void>;
   storageService?: StorageService;
 };
 
@@ -559,6 +567,7 @@ export async function createDraftEnvelope(
   {
     database = getDb(),
     storageService = createStorageService(),
+    withinTransaction: withinDraftTransaction,
   }: CreateDraftEnvelopeOptions = {},
 ): Promise<DraftEnvelopeResult> {
   const importedPdf = await importPdfDocument({
@@ -687,6 +696,8 @@ export async function createDraftEnvelope(
         },
         tx,
       );
+
+      await withinDraftTransaction?.(tx, envelopeId);
     }, database);
 
     return {
