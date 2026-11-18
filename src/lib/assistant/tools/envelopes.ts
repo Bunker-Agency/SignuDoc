@@ -18,8 +18,6 @@ import {
 // The tools that read the sender's envelopes. Both act only for the user
 // the token belongs to, through the *ForUser functions.
 
-const MAX_PAGE_SIZE = 100;
-
 type EnvelopeListInput = z.infer<typeof envelopeListFiltersSchema>;
 
 const toIso = (seconds: number | null | undefined) =>
@@ -46,12 +44,9 @@ export const listEnvelopes: AssistantTool<
   name: "list_envelopes",
   rateLimit: { limit: 60, windowMs: 10 * 60 * 1000 },
   run: async (context, input) => {
-    // One more than asked for shows whether there is a next page. At the
-    // largest page size there is no room for it, so a full page counts.
-    const lookahead = input.limit < MAX_PAGE_SIZE;
-    const rows = await listEnvelopesForUser(context.userId, {
-      ...input,
-      limit: lookahead ? input.limit + 1 : input.limit,
+    // One row past the page shows whether there is a next page.
+    const rows = await listEnvelopesForUser(context.userId, input, undefined, {
+      extraRows: 1,
     });
     const shown = rows.slice(0, input.limit);
 
@@ -68,9 +63,7 @@ export const listEnvelopes: AssistantTool<
         status: row.status,
         title: row.title,
       })),
-      hasMore: lookahead
-        ? rows.length > input.limit
-        : rows.length === input.limit,
+      hasMore: rows.length > input.limit,
       page: input.page,
     };
   },

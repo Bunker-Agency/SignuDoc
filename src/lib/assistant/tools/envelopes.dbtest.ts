@@ -204,3 +204,32 @@ test("get_envelope returns review and prepare links for a draft", async () => {
     `${ASSISTANT_TEST_BASE_URL}/envelopes/${draft}/prepare`,
   );
 });
+
+test("list_envelopes pages through the newest first without skipping any", async () => {
+  const ada = await createUser("Ada");
+  const ids: string[] = [];
+
+  for (const title of ["One", "Two", "Three"]) {
+    ids.push(await createDraft(ada.userId, title));
+  }
+
+  // Same creation second is possible; the list orders by time then id.
+  const all = JSON.parse(
+    (await callTool(ada, "list_envelopes", { limit: 3 })).text,
+  ) as { envelopes: Array<{ id: string }> };
+  const order = all.envelopes.map((envelope) => envelope.id);
+
+  assert.equal(order.length, 3);
+
+  for (const page of [1, 2, 3]) {
+    const body = JSON.parse(
+      (await callTool(ada, "list_envelopes", { limit: 1, page })).text,
+    ) as { envelopes: Array<{ id: string }>; hasMore: boolean };
+
+    assert.deepEqual(
+      body.envelopes.map((envelope) => envelope.id),
+      [order[page - 1]],
+    );
+    assert.equal(body.hasMore, page < 3);
+  }
+});

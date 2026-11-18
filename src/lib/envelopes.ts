@@ -1768,6 +1768,7 @@ export async function listEnvelopesForUser(
   userId: string,
   filters: Partial<EnvelopeListFilters> = {},
   database: DbExecutor = getDb(),
+  { extraRows = 0 }: { extraRows?: number } = {},
 ): Promise<DashboardEnvelopeListItem[]> {
   const parsedFilters = envelopeListFiltersSchema.parse(filters);
   const values: unknown[] = [userId];
@@ -1798,7 +1799,9 @@ export async function listEnvelopesForUser(
   }
 
   const limitPlaceholder = `$${String(nextParamIndex)}`;
-  values.push(parsedFilters.limit);
+  // Extra rows past the page show whether there is a next one; they do not
+  // move where the page starts.
+  values.push(parsedFilters.limit + extraRows);
   nextParamIndex += 1;
   const offsetPlaceholder = `$${String(nextParamIndex)}`;
   values.push((parsedFilters.page - 1) * parsedFilters.limit);
