@@ -20,6 +20,7 @@ import {
   enforceAssistantOAuthGate,
   recordAssistantConsent,
 } from "../assistant/oauth.ts";
+import { endAssistantConnectionsForUser } from "../assistant/connections.ts";
 import { type Branding } from "../branding.ts";
 import { getDb } from "../db/connection.ts";
 import {
@@ -431,6 +432,11 @@ export function createAppAuth({
       requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
       onPasswordReset: async ({ user }) => {
+        // The reset signs every session out (above), and the AI assistants
+        // connected to the account go too. Not caught: if they could not be
+        // ended, the reset answers with an error rather than look complete.
+        await endAssistantConnectionsForUser(user.id, "password_reset");
+
         try {
           // The new password ends a lockout from wrong guesses at the old one.
           await clearFailedSignIns(user.email);

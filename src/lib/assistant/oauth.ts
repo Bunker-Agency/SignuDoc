@@ -166,7 +166,7 @@ export function buildOAuthProviderOptions(env: EnvSource = process.env) {
  * on every instance, not after the cache runs out. Null when they can't be
  * read, which counts as off.
  */
-async function readGateSettings(): Promise<AppSettings | null> {
+export async function readAssistantSettings(): Promise<AppSettings | null> {
   try {
     return await readStoredSettings();
   } catch (error) {
@@ -178,7 +178,7 @@ async function readGateSettings(): Promise<AppSettings | null> {
 
 /** Whether the setting is on, read as the gate reads it. */
 export async function assistantConnectionsOn(): Promise<boolean> {
-  return (await readGateSettings())?.assistantConnections ?? false;
+  return (await readAssistantSettings())?.assistantConnections ?? false;
 }
 
 // Where an assistant is given a code: authorizing (also run by the plugin
@@ -209,7 +209,7 @@ export async function enforceAssistantOAuthGate(
     throw new APIError("NOT_FOUND");
   }
 
-  const settings = await readGateSettings();
+  const settings = await readAssistantSettings();
 
   if (!settings?.assistantConnections) {
     throw new APIError("FORBIDDEN", {
