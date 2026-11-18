@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BOTID:
       process.env.VERCEL === "1" && process.env.BOTID === "1" ? "1" : "",
   },
+  // pdf.js reads the text of a draft's PDF on the server
+  // (src/lib/pdf-text.ts). Bundled, it can't find its own worker file, so
+  // Node loads it as an ordinary package instead.
+  serverExternalPackages: ["pdfjs-dist"],
   images: {
     unoptimized: true,
   },
