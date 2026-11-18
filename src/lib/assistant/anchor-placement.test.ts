@@ -6,7 +6,7 @@ import { fieldPlacementSchema } from "../schemas/field.ts";
 import {
   ANCHOR_GAP_PT,
   type AnchoredField,
-  DEFAULT_FIELD_SIZES_PT,
+  DEFAULT_FIELD_SIZE_FRACTIONS,
   resolveAnchoredFields,
 } from "./anchor-placement.ts";
 
@@ -52,7 +52,7 @@ test("places a signature to the right of its label", () => {
     [page([label("Client signature")])],
     [field("Client signature", "right")],
   );
-  const size = DEFAULT_FIELD_SIZES_PT.signature;
+  const size = DEFAULT_FIELD_SIZE_FRACTIONS.signature;
 
   assert.ok(placed);
   assert.equal(placed.page, 1);
@@ -60,7 +60,7 @@ test("places a signature to the right of its label", () => {
   assert.equal(placed.signerId, "signer-1");
   assert.ok(Math.abs(placed.x - (72 + 90 + ANCHOR_GAP_PT) / 612) < 1e-5);
   // Centred on the label's middle line.
-  assert.ok(Math.abs(placed.y - (706 - size.height / 2) / 792) < 1e-5);
+  assert.ok(Math.abs(placed.y - (706 - (size.height * 792) / 2) / 792) < 1e-5);
 });
 
 test("matches case-insensitively with collapsed whitespace", () => {
@@ -138,7 +138,7 @@ test("places below and over", () => {
     field("Sign here", "below"),
     field("Sign here", "over", { type: "initials" }),
   ]);
-  const initials = DEFAULT_FIELD_SIZES_PT.initials;
+  const initials = DEFAULT_FIELD_SIZE_FRACTIONS.initials;
 
   assert.ok(below && over);
   assert.ok(Math.abs(below.x - 72 / 612) < 1e-5);
@@ -147,7 +147,7 @@ test("places below and over", () => {
   assert.ok(over.width >= 90 / 612 - 1e-9);
   assert.ok(Math.abs(over.x + over.width / 2 - (72 + 45) / 612) < 1e-5);
   assert.ok(Math.abs(over.y + over.height / 2 - 506 / 792) < 1e-5);
-  assert.ok(over.width >= initials.width / 612 - 1e-9);
+  assert.ok(over.width >= initials.width - 1e-9);
 });
 
 test("reports every problem at once", () => {
@@ -220,4 +220,18 @@ test("reports a field the schema refuses, such as an optional signature", () => 
     ok: false,
     problems: [{ index: 0, message: "signature fields are always required" }],
   });
+});
+
+test("sizes a field as a fraction of the page, on any page size", () => {
+  const a4: PageText = {
+    heightPt: 842,
+    items: [label("Sign here", 72, 500, 90)],
+    pageNumber: 1,
+    widthPt: 595,
+  };
+  const [placed] = placements([a4], [field("Sign here", "right")]);
+
+  assert.ok(placed);
+  assert.equal(placed.width, DEFAULT_FIELD_SIZE_FRACTIONS.signature.width);
+  assert.equal(placed.height, DEFAULT_FIELD_SIZE_FRACTIONS.signature.height);
 });

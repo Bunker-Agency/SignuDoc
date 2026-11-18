@@ -32,6 +32,10 @@ const nextConfig: NextConfig = {
     "/api/**": [
       "./src/assets/fonts/*.ttf",
       "./node_modules/harfbuzzjs/dist/harfbuzz-subset.wasm",
+      // pdf.js loads its worker file in-process by a computed path when it
+      // reads a PDF's text (src/lib/pdf-text.ts), which tracing can't see.
+      "./node_modules/pdfjs-dist/legacy/build/pdf.mjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
     ],
   },
 };

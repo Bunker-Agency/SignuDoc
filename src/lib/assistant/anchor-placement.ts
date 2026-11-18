@@ -28,24 +28,23 @@ export type AnchoredField = {
 };
 
 /**
- * The size of a field dropped on the prepare page, in points on a US Letter
- * page (612 x 792). The prepare page keeps these as fractions of the page
- * (`fieldTools` in src/components/envelopes/prepare-live-shell.tsx:
- * defaultWidth x 612, defaultHeight x 792, rounded), so a field placed here
- * looks like one the sender dropped.
+ * The size of a field dropped on the prepare page, as fractions of the page
+ * (`fieldTools` in src/components/envelopes/prepare-live-shell.tsx,
+ * defaultWidth and defaultHeight). Used the same way here, so a field placed
+ * by text matches one the sender dropped on any page size or orientation.
  */
-export const DEFAULT_FIELD_SIZES_PT: Record<
+export const DEFAULT_FIELD_SIZE_FRACTIONS: Record<
   FieldType,
   { width: number; height: number }
 > = {
-  checkbox: { height: 18, width: 18 },
-  date: { height: 36, width: 73 },
-  dropdown: { height: 36, width: 135 },
-  initials: { height: 44, width: 86 },
-  number: { height: 36, width: 98 },
-  radio: { height: 18, width: 18 },
-  signature: { height: 55, width: 147 },
-  text: { height: 44, width: 110 },
+  checkbox: { height: 0.023, width: 0.03 },
+  date: { height: 0.045, width: 0.12 },
+  dropdown: { height: 0.045, width: 0.22 },
+  initials: { height: 0.055, width: 0.14 },
+  number: { height: 0.045, width: 0.16 },
+  radio: { height: 0.023, width: 0.03 },
+  signature: { height: 0.07, width: 0.24 },
+  text: { height: 0.055, width: 0.18 },
 };
 
 export const ANCHOR_GAP_PT = 4;
@@ -212,8 +211,8 @@ function place(
   size: { width: number; height: number },
   page: PageText,
 ): { x: number; y: number; width: number; height: number } {
-  let { width } = size;
-  const height = Math.min(size.height, page.heightPt);
+  let width = size.width * page.widthPt;
+  const height = Math.min(size.height * page.heightPt, page.heightPt);
   let x: number;
   let y: number;
 
@@ -307,7 +306,7 @@ export function resolveAnchoredFields(
       return;
     }
 
-    const size = DEFAULT_FIELD_SIZES_PT[field.type];
+    const size = DEFAULT_FIELD_SIZE_FRACTIONS[field.type];
     const placed = place(field.anchor.position, match.box, size, page);
     const width = round(placed.width / page.widthPt);
     const height = round(placed.height / page.heightPt);
