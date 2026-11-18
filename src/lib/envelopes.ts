@@ -131,6 +131,8 @@ type CreateDraftEnvelopeOptions = {
 };
 
 type CreateDraftEnvelopeInput = {
+  /** Recorded on the draft's `created` event, e.g. that an assistant made it. */
+  auditMetadata?: Record<string, unknown> | null;
   sourcePdf: {
     body: Uint8Array;
     contentType?: string | null;
@@ -681,7 +683,7 @@ export async function createDraftEnvelope(
           createdAt: now,
           envelopeId,
           event: "created",
-          metadata: null,
+          metadata: input.auditMetadata ?? null,
         },
         tx,
       );

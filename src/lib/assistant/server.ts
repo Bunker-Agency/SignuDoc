@@ -14,6 +14,7 @@ import { TemplateError } from "../templates.ts";
 import type { AssistantContext } from "./guard.ts";
 import { ENVELOPE_TOOLS } from "./tools/envelopes.ts";
 import { type AssistantTool, AssistantToolError } from "./tools/shared.ts";
+import { UPLOAD_TOOLS } from "./tools/uploads.ts";
 
 export { type AssistantTool, draftLinks } from "./tools/shared.ts";
 
@@ -27,6 +28,7 @@ export { type AssistantTool, draftLinks } from "./tools/shared.ts";
  */
 export const ASSISTANT_TOOLS: Array<AssistantTool<unknown, unknown>> = [
   ...ENVELOPE_TOOLS,
+  ...UPLOAD_TOOLS,
 ];
 
 const SERVER_INFO = { name: "SignuDoc", version: "1.0.0" };
