@@ -62,6 +62,7 @@ Treat the link like a password until you have used it.
 
 The assistant reads the words on each page and puts a field next to a label, for example a signature to the right of "Signature:". It uses the same default field sizes as the prepare page.
 
+- The assistant is told to put a Name, Job title or Company field, not a Text field, next to a label such as "Name:", "Title:" or "Company:", so it fills in from the signer's details like one placed on the prepare page. Check the field types when you review the draft.
 - This needs a PDF with a text layer. A scanned PDF has none, and the assistant will say so. Then place the fields yourself on the prepare page.
 - Placing fields **replaces every field already on the draft**. Setting signers keeps the fields of a signer whose email stays the same.
 - If any label can't be found, nothing is placed and the problems are listed.

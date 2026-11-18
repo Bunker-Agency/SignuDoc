@@ -47,6 +47,8 @@ is on.
   answer (an optional one may be left empty).
 - The details appear on the sealed PDF, on the audit certificate (also in
   copies sent to other recipients) and in the signer-data export.
+- An AI assistant can place these fields too, and is told to use them, not
+  Text fields, next to labels such as "Name:", "Title:" or "Company:".
 
 ### Dependencies
 
