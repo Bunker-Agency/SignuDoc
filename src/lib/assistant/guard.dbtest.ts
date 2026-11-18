@@ -21,14 +21,21 @@ import type {
   listAssistantConnections as List,
 } from "./connections.ts";
 import type { requireAssistantContext as RequireContext } from "./guard.ts";
+import { assistantResourceUrl } from "./oauth.ts";
 import {
+  answerConsent,
   ASSISTANT_TEST_BASE_URL,
   ASSISTANT_TEST_PASSWORD,
+  ASSISTANT_TEST_REDIRECT_URI,
+  assistantAuthorizePath,
   callAuth,
+  connectAssistant,
   createAssistantTestUser,
+  createPkce,
   createSignedInCookie,
   issueAssistantToken,
   prepareAssistantTestEnvironment,
+  replyRedirect,
   seedAssistantResource,
 } from "./test-support.ts";
 
@@ -358,6 +365,109 @@ test("a refresh after revoke is refused", async () => {
   assert.notEqual(refreshed.status, 200);
   assert.equal(refreshed.payload?.error, "invalid_grant");
   assert.equal(refreshed.payload?.access_token, undefined);
+});
+
+test("a token from an ended connection stays refused after the client is approved again", async () => {
+  await setSettings({ assistantConnections: true });
+
+  const user = await createAssistantTestUser(database);
+  const issued = await issueAssistantToken(database, { userId: user.id });
+
+  await endAssistantConnection(
+    { clientId: issued.clientId, reason: "revoked", userId: user.id },
+    database,
+  );
+
+  // The sender approves the same client again a minute later. The old
+  // access token has not expired yet.
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + 60_000 });
+
+  try {
+    const again = await connectAssistant(database, {
+      clientId: issued.clientId,
+      userId: user.id,
+    });
+
+    assert.equal((await connectionRows(user.id)).length, 1);
+    assert.equal((await refused(issued.accessToken)).status, 401);
+    assert.ok(
+      !(
+        (await requireAssistantContext(
+          mcpRequest(again.accessToken),
+        )) instanceof Response
+      ),
+    );
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("a code issued before a connection ended cannot be exchanged after", async () => {
+  await setSettings({ assistantConnections: true });
+
+  const user = await createAssistantTestUser(database);
+  const issued = await issueAssistantToken(database, { userId: user.id });
+
+  // A second authorization of the same client, approved but not yet
+  // exchanged when the connection ends.
+  const cookie = await createSignedInCookie(database, user.id);
+  const { challenge, verifier } = createPkce();
+  const consentUrl = replyRedirect(
+    await callAuth(
+      "GET",
+      assistantAuthorizePath(issued.clientId, { challenge }),
+      { cookie },
+    ),
+  );
+
+  assert.equal(consentUrl?.pathname, "/oauth/consent");
+
+  const code = replyRedirect(
+    await answerConsent(cookie, consentUrl, true),
+  )?.searchParams.get("code");
+
+  assert.ok(code);
+
+  // Other verification rows (here a password reset's) are left alone.
+  const unrelated = randomUUID();
+
+  await database.query(
+    `insert into verification (id, identifier, value, "expiresAt")
+       values ($1, $2, $3, now() + interval '1 hour')`,
+    [unrelated, `reset-password:${unrelated}`, user.id],
+  );
+
+  await endAssistantConnection(
+    { clientId: issued.clientId, reason: "revoked", userId: user.id },
+    database,
+  );
+
+  const exchanged = await callAuth("POST", "/oauth2/token", {
+    form: {
+      client_id: issued.clientId,
+      code,
+      code_verifier: verifier,
+      grant_type: "authorization_code",
+      redirect_uri: ASSISTANT_TEST_REDIRECT_URI,
+      resource: assistantResourceUrl(process.env),
+    },
+  });
+
+  assert.notEqual(exchanged.status, 200, JSON.stringify(exchanged.payload));
+  assert.equal(
+    (
+      await database.query(`select 1 from verification where id = $1`, [
+        unrelated,
+      ])
+    ).rowCount,
+    1,
+  );
+  assert.equal(exchanged.payload?.refresh_token, undefined);
+  assert.deepEqual(await pluginRows(user.id), {
+    access: 0,
+    consent: 0,
+    refresh: 0,
+  });
 });
 
 test("refuses a token past the install's maximum session age", async () => {

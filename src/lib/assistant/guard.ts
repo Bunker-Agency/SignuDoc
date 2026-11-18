@@ -25,6 +25,13 @@ import {
 // still be allowed to use SignuDoc, and the setting must still be on. All
 // of it is read from the database on every request, never from a cache.
 
+/**
+ * How far a token's issue time may fall before its connection's approval
+ * and still count as issued under it: the instance that recorded the
+ * approval and the one that issued the token may disagree by a little.
+ */
+const APPROVAL_CLOCK_SKEW_SECONDS = 5;
+
 export type AssistantContext = {
   clientId: string;
   clientName: string;
@@ -43,6 +50,7 @@ type RefusalReason =
   | "invalid_token"
   | "missing_token"
   | "setting_off"
+  | "stale_token"
   | "too_old"
   | "two_step_setup_required"
   | "user_gone";
@@ -273,6 +281,20 @@ async function checkAssistantRequest(
       clientId,
       userId,
     });
+
+    return invalidToken(resource, "The connection has ended.");
+  }
+
+  // A token issued before this approval belongs to a connection that has
+  // since ended. Ending deletes the row, but approving the same assistant
+  // again makes a new one, which an old token would otherwise pass. Every
+  // token issued under this approval is newer than it: the approval is
+  // recorded before the code reaches the assistant.
+  if (
+    typeof payload.iat !== "number" ||
+    payload.iat < connection.approvedAt - APPROVAL_CLOCK_SKEW_SECONDS
+  ) {
+    logRefusal(request, "stale_token", { clientId, userId });
 
     return invalidToken(resource, "The connection has ended.");
   }

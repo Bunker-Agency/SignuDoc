@@ -17,7 +17,7 @@ import {
 // recalled, so the row is what decides: the token guard (guard.ts) checks
 // it on every request, and ending a connection deletes it together with
 // everything the provider kept for that sender and assistant (its consent,
-// refresh tokens and any opaque access tokens). Refresh tokens outlive
+// refresh tokens, any opaque access tokens, and codes not yet exchanged). Refresh tokens outlive
 // sessions and consents in the provider, so they are deleted here
 // explicitly.
 //
@@ -136,6 +136,45 @@ export async function listAssistantConnections(
   );
 }
 
+// The provider keeps an authorization code as a verification row whose
+// value is the JSON it wrote: {"type":"authorization_code","query":{...},
+// "userId":...}, type first. Only rows that start that way are read as
+// JSON (the CASE decides before the cast), because other verification rows
+// hold plain strings.
+const PENDING_CODE = `CASE WHEN value LIKE '{"type":"authorization\\_code",%' THEN value::jsonb END`;
+
+/**
+ * Deletes authorization codes the sender approved and the assistant has not
+ * exchanged yet. One exchanged after the connection ended would hand out a
+ * refresh token with no connection behind it, which would work again once
+ * the same assistant is approved again.
+ */
+async function deletePendingCodes(
+  tx: DbExecutor,
+  userId?: string,
+  clientId?: string,
+): Promise<void> {
+  const conditions = [`${PENDING_CODE} IS NOT NULL`];
+  const values: string[] = [];
+
+  if (userId !== undefined) {
+    values.push(userId);
+    conditions.push(`${PENDING_CODE} ->> 'userId' = $${String(values.length)}`);
+  }
+
+  if (clientId !== undefined) {
+    values.push(clientId);
+    conditions.push(
+      `${PENDING_CODE} -> 'query' ->> 'client_id' = $${String(values.length)}`,
+    );
+  }
+
+  await tx.query(
+    `DELETE FROM verification WHERE ${conditions.join(" AND ")}`,
+    values,
+  );
+}
+
 /** Deletes what the provider kept for the sender, or for one assistant. */
 async function deleteProviderGrants(
   tx: DbExecutor,
@@ -152,6 +191,7 @@ async function deleteProviderGrants(
   await tx.query(`DELETE FROM "oauthAccessToken" WHERE ${where}`, values);
   await tx.query(`DELETE FROM "oauthRefreshToken" WHERE ${where}`, values);
   await tx.query(`DELETE FROM "oauthConsent" WHERE ${where}`, values);
+  await deletePendingCodes(tx, userId, clientId);
 }
 
 async function recordDisconnected(
@@ -263,5 +303,6 @@ export async function endAllAssistantConnections(
     await tx.query(`DELETE FROM "oauthAccessToken"`);
     await tx.query(`DELETE FROM "oauthRefreshToken"`);
     await tx.query(`DELETE FROM "oauthConsent"`);
+    await deletePendingCodes(tx);
   });
 }
