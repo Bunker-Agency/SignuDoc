@@ -37,6 +37,8 @@ export class OrganizationSettingsError extends Error {
 /** The values the Organization form shows and sends back. */
 export type OrganizationSettingsView = {
   allowedEmailDomains: string;
+  /** Senders may connect an AI assistant. Changed in the assistant panel. */
+  assistantConnections: boolean;
   /** "#rrggbb", or empty for the default color. */
   brandColor: string;
   hosted: boolean;
@@ -67,6 +69,7 @@ export function toOrganizationSettingsView(
 ): OrganizationSettingsView {
   return {
     allowedEmailDomains: settings.allowedEmailDomains.join(", "),
+    assistantConnections: settings.assistantConnections,
     brandColor: settings.brandColor ?? "",
     hosted: settings.hosted,
     logoUrl:

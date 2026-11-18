@@ -127,10 +127,20 @@ import { escapeHtml } from "./utils/html.ts";
 
 type CreateDraftEnvelopeOptions = {
   database?: DbPool;
+  /**
+   * Run inside the transaction that inserts the draft, after its rows, so
+   * whatever it writes commits with the draft or not at all.
+   */
+  withinTransaction?: (
+    tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
+    envelopeId: string,
+  ) => Promise<void>;
   storageService?: StorageService;
 };
 
 type CreateDraftEnvelopeInput = {
+  /** Recorded on the draft's `created` event, e.g. that an assistant made it. */
+  auditMetadata?: Record<string, unknown> | null;
   sourcePdf: {
     body: Uint8Array;
     contentType?: string | null;
@@ -299,11 +309,17 @@ type PersistedFieldRecord = FieldRecord & {
 
 export type DashboardEnvelopeListItem = {
   contextLine: string;
+  /** Unix seconds. Set by listEnvelopesForUser, for callers that want it. */
+  createdAt?: number;
   createdAtLabel: string;
   /** Out for signature and past its deadline. */
   expired?: boolean;
   id: string;
   searchableEmails: readonly string[];
+  /** Unix seconds; null for a draft. Set by listEnvelopesForUser. */
+  sentAt?: number | null;
+  /** Who signs, in order. Set by listEnvelopesForUser. */
+  signers?: readonly { email: string; name: string; status: string }[];
   status: EnvelopeRecord["status"];
   /** What the status pill says: the status, or how far signing has got. */
   statusLabel: string;
@@ -562,6 +578,7 @@ export async function createDraftEnvelope(
   {
     database = getDb(),
     storageService = createStorageService(),
+    withinTransaction: withinDraftTransaction,
   }: CreateDraftEnvelopeOptions = {},
 ): Promise<DraftEnvelopeResult> {
   const importedPdf = await importPdfDocument({
@@ -686,10 +703,12 @@ export async function createDraftEnvelope(
           createdAt: now,
           envelopeId,
           event: "created",
-          metadata: null,
+          metadata: input.auditMetadata ?? null,
         },
         tx,
       );
+
+      await withinDraftTransaction?.(tx, envelopeId);
     }, database);
 
     return {
@@ -1651,7 +1670,11 @@ function buildTimelineDescription(event: AuditEventRecord): string {
     case "copied":
       return "Copied from an earlier envelope";
     case "created":
-      return "Envelope created";
+      return event.metadata?.via === "mcp" &&
+        typeof event.metadata.client === "string" &&
+        event.metadata.client.trim().length > 0
+        ? `Envelope created by ${event.metadata.client.trim()} (AI assistant)`
+        : "Envelope created";
     case "sent":
       return `Sent to ${targetLabel}`;
     case "viewed":
@@ -1773,6 +1796,7 @@ export async function listEnvelopesForUser(
   userId: string,
   filters: Partial<EnvelopeListFilters> = {},
   database: DbExecutor = getDb(),
+  { extraRows = 0 }: { extraRows?: number } = {},
 ): Promise<DashboardEnvelopeListItem[]> {
   const parsedFilters = envelopeListFiltersSchema.parse(filters);
   const values: unknown[] = [userId];
@@ -1803,7 +1827,9 @@ export async function listEnvelopesForUser(
   }
 
   const limitPlaceholder = `$${String(nextParamIndex)}`;
-  values.push(parsedFilters.limit);
+  // Extra rows past the page show whether there is a next one; they do not
+  // move where the page starts.
+  values.push(parsedFilters.limit + extraRows);
   nextParamIndex += 1;
   const offsetPlaceholder = `$${String(nextParamIndex)}`;
   values.push((parsedFilters.page - 1) * parsedFilters.limit);
@@ -1857,6 +1883,7 @@ export async function listEnvelopesForUser(
 
     return {
       contextLine: buildDashboardContextLine(envelope, signers, fields),
+      createdAt: envelope.createdAt,
       createdAtLabel: formatShortDate(envelope.createdAt),
       expired: isEnvelopeExpired(envelope, Math.floor(Date.now() / 1000)),
       id: envelope.id,
@@ -1865,6 +1892,12 @@ export async function listEnvelopesForUser(
         ...signers,
         ...(copyRecipientsByEnvelope.get(envelope.id) ?? []),
       ].map((recipient) => recipient.email),
+      sentAt: envelope.sentAt ?? null,
+      signers: signers.map(({ email, name, status }) => ({
+        email,
+        name,
+        status,
+      })),
       status: envelope.status,
       statusLabel: buildDashboardStatusLabel(envelope, signers),
       title: envelope.title,

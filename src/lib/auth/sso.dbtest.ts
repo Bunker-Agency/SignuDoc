@@ -15,6 +15,7 @@ import { clearRateLimitStoreForTests } from "../security/rate-limit.ts";
 import { listSystemAuditEvents } from "../services/system-audit.ts";
 import { invalidateSettingsCache, saveSettings } from "../settings.ts";
 import { needsTwoFactorSetup } from "../sign-in-security.ts";
+import { ssoResumePath } from "../assistant/signed-query.ts";
 
 // Single sign-on against a real Postgres, the real Better Auth endpoints and
 // a small OpenID Connect provider run here: discovery, signed ID tokens and
@@ -226,14 +227,16 @@ async function post(
 async function signInWithSso(
   auth: ReturnType<typeof CreateAppAuth>,
   profile: Profile,
+  callbackURL = `${BASE_URL}/dashboard`,
 ) {
   const cookies: Cookies = new Map();
   const started = await post(
     auth,
     "/sign-in/social",
     {
-      callbackURL: `${BASE_URL}/dashboard`,
+      callbackURL,
       errorCallbackURL: `${BASE_URL}/login`,
+      newUserCallbackURL: callbackURL,
       provider: "sso",
     },
     cookies,
@@ -298,6 +301,7 @@ before(async () => {
 
 beforeEach(async () => {
   await database.query(`truncate public."user" cascade`);
+  await database.query(`delete from public."oauthClient"`);
   await database.query("delete from public.system_audit_events");
   await database.query("delete from public.app_settings");
   await database.query("delete from public.rate_limits");
@@ -315,6 +319,7 @@ beforeEach(async () => {
 after(async () => {
   try {
     await database.query(`truncate public."user" cascade`);
+    await database.query(`delete from public."oauthClient"`);
     await database.query("delete from public.system_audit_events");
     await database.query("delete from public.app_settings");
     replaceDbPoolForTests(replaced ?? database);
@@ -569,4 +574,87 @@ test("an ID token posted straight to the sign-in route is refused, not signed in
   );
 
   assert.equal(accounts.rowCount, 0);
+});
+
+test("single sign-on picks up an AI assistant's authorization where it left off", async () => {
+  const auth = await makeAuth();
+  const resource = `${BASE_URL}/api/mcp`;
+
+  await saveSettings({ assistantConnections: true }, database);
+  invalidateSettingsCache();
+  await database.query(
+    `insert into public."oauthResource" (id, identifier, name, "createdAt", "updatedAt")
+       values ($1, $2, 'SignuDoc MCP', now(), now())
+       on conflict (identifier) do nothing`,
+    [randomUUID(), resource],
+  );
+
+  const registered = await post(auth, "/oauth2/register", {
+    client_name: "Claude Code",
+    redirect_uris: ["http://127.0.0.1:33418/callback"],
+    token_endpoint_auth_method: "none",
+  });
+
+  assert.equal(registered.status, 201, JSON.stringify(registered.payload));
+
+  // Signed out, the provider sends the browser to the sign-in page with the
+  // request signed.
+  const fetchJson = async (path: string, cookies: Cookies = new Map()) => {
+    const response = await auth.handler(
+      new Request(new URL(path, BASE_URL), {
+        headers: {
+          accept: "application/json",
+          cookie: cookieHeader(cookies),
+          "x-forwarded-for": "203.0.113.9",
+        },
+      }),
+    );
+
+    absorbCookies(response, cookies);
+
+    return (await response.json()) as { url?: string };
+  };
+  const signedOut = await fetchJson(
+    `/api/auth/oauth2/authorize?${new URLSearchParams({
+      client_id: String(registered.payload?.client_id),
+      code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+      code_challenge_method: "S256",
+      redirect_uri: "http://127.0.0.1:33418/callback",
+      resource,
+      response_type: "code",
+      scope: "envelopes:read drafts:write offline_access",
+      state: "state-123",
+    }).toString()}`,
+  );
+  const login = new URL(signedOut.url ?? "", BASE_URL);
+
+  assert.equal(login.pathname, "/login");
+
+  // What the sign-in page hands single sign-on to come back to.
+  const resumePath = ssoResumePath(login.search);
+
+  assert.ok(resumePath);
+
+  const { cookies, location } = await signInWithSso(
+    auth,
+    {
+      email: "pat@acme.com",
+      email_verified: true,
+      name: "Pat Person",
+      sub: "okta-pat",
+    },
+    `${BASE_URL}${resumePath}`,
+  );
+
+  assert.equal(location.href, `${BASE_URL}${resumePath}`);
+
+  // Back at the authorization with a session: on to the consent page.
+  const resumed = await fetchJson(location.href, cookies);
+  const consent = new URL(resumed.url ?? "", BASE_URL);
+
+  assert.equal(consent.pathname, "/oauth/consent", resumed.url);
+  assert.equal(
+    consent.searchParams.get("client_id"),
+    registered.payload?.client_id,
+  );
 });

@@ -86,6 +86,10 @@ Signers see your organization, not SignuDoc. Give the install your name, logo an
 
 The first account is the administrator, and you can make more. Choose who may create an account: people at your email domains, nobody, or anyone. People who only sign never need one. Set how long finished documents are kept, and answer a signer who asks for their data with a built-in export or erasure tool.
 
+### Prepare drafts with an AI assistant
+
+Off until an administrator turns it on. Senders can then connect an assistant such as Claude, which prepares a draft by starting it, setting the signers and placing signature fields next to the words on the page. It can't send anything: you review the draft and press Send. See [Connect an AI assistant](docs/connect-an-ai-assistant.md).
+
 ### On your phone
 
 SignuDoc works on small screens as well as large ones: check on your documents from your phone, and signers sign from theirs.
@@ -245,6 +249,7 @@ Your install carries your organization's name, and your organization is responsi
 ## Learn more
 
 - [Self-hosting guide](docs/self-hosting.md): deploying, first-run setup, what it costs, your own domain, updates, the EU, the seal, cleanup, rate limits, bot protection and every optional setting.
+- [Connect an AI assistant](docs/connect-an-ai-assistant.md): turning it on, adding the connector, what an assistant can do, and how to revoke it.
 - [Development](docs/development.md): running SignuDoc locally, storage, the database, email, tests and the code's layout.
 - [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md).
 

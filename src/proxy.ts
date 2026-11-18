@@ -137,7 +137,9 @@ function applySecurityHeaders(response: NextResponse, pathname: string) {
     !pathname.startsWith("/sign/") &&
     !pathname.startsWith("/api/signing/") &&
     !pathname.startsWith("/api/download/") &&
-    !pathname.startsWith("/download/")
+    !pathname.startsWith("/download/") &&
+    !pathname.startsWith("/upload/") &&
+    !pathname.startsWith("/api/assistant/uploads/")
   ) {
     return response;
   }

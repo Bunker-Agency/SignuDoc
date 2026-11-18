@@ -8,6 +8,36 @@ release says when it does.
 
 ## [Unreleased]
 
+This release changes the database: run the migrations before serving the new
+code. Password reset, "sign out everywhere" and an administrator's two-step
+reset now touch new tables on every install, whether or not the feature below
+is on.
+
+### AI assistants
+
+- Senders can connect an AI assistant such as Claude, over MCP, to prepare
+  drafts: start a draft, set its signers, place fields next to words on the
+  page, and delete a draft. It can read the sender's own envelopes. It can't
+  send, remind, void or change a sent envelope, and it never emails anyone.
+- Off by default. An administrator turns it on under Settings, Organization,
+  AI assistant connections. While it is off, the endpoint, sign-in for
+  assistants, upload links and discovery documents all refuse.
+- An assistant signs in through the sender's normal sign-in and needs an
+  approval on a consent screen every time it connects. Each approval and end
+  of a connection is recorded in the site audit trail.
+- A PDF goes in through a one-time upload link, good for 30 minutes.
+- Senders see their connected assistants under Settings and can revoke them.
+  Revoking, a password reset, signing out everywhere, an administrator's
+  two-step reset, purging an account, the session limits and turning the
+  setting off all end connections. A connection never outlives the install's
+  session limits.
+- Drafts made this way are marked in their audit trail as coming from an
+  assistant.
+- Not yet checked live against claude.ai.
+- New guide: [Connect an AI assistant](docs/connect-an-ai-assistant.md).
+  Part 11 requirements, risk assessment, traceability matrix and known gaps,
+  and the SOC 2 control map, are updated.
+
 ### Signing
 
 - Three new field types: Name, Job title and Company. Name boxes fill in with
@@ -18,9 +48,15 @@ release says when it does.
 - The details appear on the sealed PDF, on the audit certificate (also in
   copies sent to other recipients) and in the signer-data export.
 
-This change updates the database: two new columns and the three new field
-types (`20261118090000_signer_details.sql`). On Vercel the production build
-applies it, so nothing is needed by hand. On other hosts, run
+### Dependencies
+
+- Better Auth is upgraded to 1.7.25.
+- New: `@better-auth/oauth-provider` 1.7.25 and `@modelcontextprotocol/sdk`
+  1.32.2.
+
+The signer details above add two columns and three field types
+(`20261118090000_signer_details.sql`). On Vercel the production build
+applies every migration, so nothing is needed by hand. On other hosts, run
 `npm run db:migrate` as on every deploy.
 
 ## [0.3.0] - 2026-11-16

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { setAssistantConnections } from "@/lib/assistant/settings";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { logRouteError } from "@/lib/security/logging";
 import {
@@ -25,8 +26,9 @@ import {
 
 const noStore = { "cache-control": "private, no-store" };
 
-// Sign-in security settings: whether two-step sign-in is required, or the
-// two session limits (both at once). Administrators only.
+// Sign-in security settings: whether two-step sign-in is required, the
+// two session limits (both at once), or whether senders may connect an AI
+// assistant. Administrators only.
 export async function PUT(request: Request) {
   const sessionResult = await requireAdminSession(request);
 
@@ -52,11 +54,13 @@ export async function PUT(request: Request) {
   const body =
     typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
       ? (parsed as {
+          assistantConnections?: unknown;
           requireTwoFactor?: unknown;
           sessionIdleMinutes?: unknown;
           sessionMaxHours?: unknown;
         })
       : null;
+  const changesAssistants = typeof body?.assistantConnections === "boolean";
   const changesRequirement = typeof body?.requireTwoFactor === "boolean";
   const changesSessions =
     body !== null &&
@@ -71,6 +75,7 @@ export async function PUT(request: Request) {
   );
 
   if (
+    !changesAssistants &&
     !changesRequirement &&
     !(
       changesSessions &&
@@ -81,7 +86,7 @@ export async function PUT(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Say whether two-step sign-in should be required, or choose both session limits.",
+          "Say whether two-step sign-in should be required, whether assistant connections are on, or choose both session limits.",
       },
       { headers: noStore, status: 400 },
     );
@@ -102,7 +107,9 @@ export async function PUT(request: Request) {
   };
 
   try {
-    if (changesRequirement) {
+    if (changesAssistants) {
+      await setAssistantConnections(actor, body?.assistantConnections === true);
+    } else if (changesRequirement) {
       await setTwoFactorRequirement(actor, body?.requireTwoFactor === true);
     } else {
       await setSessionLimits(actor, {
@@ -115,6 +122,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(
       {
+        assistantConnections: stored?.assistantConnections ?? false,
         requireTwoFactor: stored?.requireTwoFactor ?? false,
         sessionIdleMinutes: stored?.sessionIdleMinutes ?? null,
         sessionMaxHours: stored?.sessionMaxHours ?? null,

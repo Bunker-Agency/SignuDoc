@@ -1,13 +1,26 @@
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { APIError, betterAuth } from "better-auth";
 import { createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
-import { genericOAuth, haveIBeenPwned, twoFactor } from "better-auth/plugins";
+import {
+  genericOAuth,
+  haveIBeenPwned,
+  jwt,
+  twoFactor,
+} from "better-auth/plugins";
 import { headers } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { after } from "next/server";
 import type { Pool } from "pg";
 import { cache } from "react";
 
+import {
+  assistantDiscoveryGate,
+  buildOAuthProviderOptions,
+  enforceAssistantOAuthGate,
+  recordAssistantConsent,
+} from "../assistant/oauth.ts";
+import { endAssistantConnectionsForUser } from "../assistant/connections.ts";
 import { type Branding } from "../branding.ts";
 import { getDb } from "../db/connection.ts";
 import {
@@ -346,6 +359,15 @@ export function createAppAuth({
     }),
     // After the two-factor plugin: see sign-in-events.ts.
     signInEvents(),
+    // AI assistants connect through OAuth (src/lib/assistant/oauth.ts),
+    // only while the administrator has turned that on. The provider signs
+    // its access tokens with the jwt plugin's keys. The jwt plugin's own
+    // session token is not handed out: not on /get-session, and its /token
+    // endpoint is blocked in hooks.before.
+    jwt({ disableSettingJwtHeader: true }),
+    // Before the provider, which answers its discovery documents itself.
+    assistantDiscoveryGate(),
+    oauthProvider(buildOAuthProviderOptions(env)),
     ...(includeNextCookies ? [nextCookies()] : []),
   ];
   return betterAuth({
@@ -410,6 +432,11 @@ export function createAppAuth({
       requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
       onPasswordReset: async ({ user }) => {
+        // The reset signs every session out (above), and the AI assistants
+        // connected to the account go too. Not caught: if they could not be
+        // ended, the reset answers with an error rather than look complete.
+        await endAssistantConnectionsForUser(user.id, "password_reset");
+
         try {
           // The new password ends a lockout from wrong guesses at the old one.
           await clearFailedSignIns(user.email);
@@ -447,6 +474,11 @@ export function createAppAuth({
       // address's domain and is printed on the sign-up page, so saying it
       // here gives nothing away.
       before: createAuthMiddleware(async (ctx) => {
+        // The OAuth endpoints for AI assistants: some never reachable, the
+        // rest only while the setting is on. First, so nothing below can
+        // return before it.
+        await enforceAssistantOAuthGate(ctx);
+
         if (isRunningSetup()) {
           return;
         }
@@ -485,6 +517,11 @@ export function createAppAuth({
             message: decision.message,
           });
         }
+      }),
+      // A sender approving an AI assistant on the consent page is recorded
+      // as a connection (src/lib/assistant/oauth.ts).
+      after: createAuthMiddleware(async (ctx) => {
+        await recordAssistantConsent(ctx);
       }),
     },
     // Better Auth limits its own routes (three sign-in or sign-up attempts

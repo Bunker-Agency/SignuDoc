@@ -1,3 +1,4 @@
+import { endAssistantConnectionsForUser } from "./assistant/connections.ts";
 import {
   type DbExecutor,
   type DbPool,
@@ -146,14 +147,14 @@ export function usesTwoFactor(user: object): boolean {
   );
 }
 
-type Actor = {
+export type Actor = {
   email: string;
   ipAddress?: string | null;
   userAgent?: string | null;
   userId: string;
 };
 
-async function lockActor(actor: Actor, tx: DbExecutor) {
+export async function lockActor(actor: Actor, tx: DbExecutor) {
   const row = await queryOne<{ role: string; twoFactorEnabled: boolean }>(
     tx,
     `SELECT role, "twoFactorEnabled" AS "twoFactorEnabled" FROM "user" WHERE id = $1`,
@@ -277,6 +278,9 @@ export async function resetTwoFactor(
       [targetUserId],
     );
     await tx.query(`DELETE FROM session WHERE "userId" = $1`, [targetUserId]);
+    // The AI assistants they connected go with their sessions, in the same
+    // transaction: an assistant is no more trusted than a signed-in browser.
+    await endAssistantConnectionsForUser(targetUserId, "sign_in_reset", tx);
     await recordSystemAuditEvent(
       {
         actorEmail: actor.email,
