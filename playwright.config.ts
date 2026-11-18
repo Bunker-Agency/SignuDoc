@@ -35,6 +35,18 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      // This one adds people to the install and turns a setting on, so it
+      // runs after the others, in the project below.
+      testIgnore: /assistant-connect\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { height: 900, width: 1440 },
+      },
+    },
+    {
+      dependencies: ["chromium"],
+      name: "assistant",
+      testMatch: /assistant-connect\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { height: 900, width: 1440 },
