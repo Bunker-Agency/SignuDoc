@@ -358,6 +358,32 @@ test("registration rejects a non-loopback http redirect URI", async () => {
   );
 });
 
+test("registration rejects logout and key-set fields SignuDoc doesn't use", async () => {
+  await setAssistantConnections(true);
+
+  for (const extra of [
+    { backchannel_logout_uri: "https://client.example.com/logout" },
+    { jwks_uri: "https://client.example.com/jwks.json" },
+    { post_logout_redirect_uris: ["https://client.example.com/bye"] },
+  ]) {
+    const refused = await send("POST", "/oauth2/register", {
+      body: { ...VALID_REGISTRATION, ...extra },
+    });
+
+    assert.equal(refused.status, 400, JSON.stringify(extra));
+    assert.equal(
+      refused.payload?.error,
+      "invalid_client_metadata",
+      JSON.stringify(extra),
+    );
+  }
+
+  assert.equal(
+    (await database.query(`select 1 from "oauthClient"`)).rowCount,
+    0,
+  );
+});
+
 test("client and consent management endpoints are not reachable", async () => {
   await setAssistantConnections(true);
 

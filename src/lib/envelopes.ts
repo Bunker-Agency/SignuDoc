@@ -1659,7 +1659,11 @@ function buildTimelineDescription(event: AuditEventRecord): string {
     case "copied":
       return "Copied from an earlier envelope";
     case "created":
-      return "Envelope created";
+      return event.metadata?.via === "mcp" &&
+        typeof event.metadata.client === "string" &&
+        event.metadata.client.trim().length > 0
+        ? `Envelope created by ${event.metadata.client.trim()} (AI assistant)`
+        : "Envelope created";
     case "sent":
       return `Sent to ${targetLabel}`;
     case "viewed":

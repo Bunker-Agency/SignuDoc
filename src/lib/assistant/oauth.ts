@@ -220,6 +220,7 @@ export async function enforceAssistantOAuthGate(
 
   if (path === "/oauth2/register") {
     checkRegisteredRedirectUris(ctx.body);
+    checkRegisteredMetadata(ctx.body);
   }
 
   if (CODE_PATHS.has(path)) {
@@ -405,6 +406,30 @@ function checkRegisteredRedirectUris(body: unknown) {
         error: "invalid_redirect_uri",
         error_description:
           "Redirect URIs must use https, or http on localhost, 127.0.0.1 or [::1].",
+      });
+    }
+  }
+}
+
+// SignuDoc uses none of these, and the provider would act on them: it POSTs
+// a logout token to backchannel_logout_uri, and fetches jwks_uri. A client
+// that sets one is refused (RFC 7591's error shape).
+const UNUSED_CLIENT_METADATA = [
+  "backchannel_logout_uri",
+  "jwks_uri",
+  "post_logout_redirect_uris",
+] as const;
+
+function checkRegisteredMetadata(body: unknown) {
+  if (typeof body !== "object" || body === null) {
+    return;
+  }
+
+  for (const field of UNUSED_CLIENT_METADATA) {
+    if (field in body && (body as Record<string, unknown>)[field] != null) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_client_metadata",
+        error_description: `SignuDoc doesn't accept ${field} at registration.`,
       });
     }
   }

@@ -280,6 +280,40 @@ test("a user who must set up two-step sign-in is not issued a code", async () =>
   assert.equal((await connectionRows(user.id)).length, 0);
 });
 
+test("when the connection can't be recorded, the client gets no code", async () => {
+  await setSettings({ assistantConnections: true });
+
+  const user = await createAssistantTestUser(database);
+  const clientId = await registerAssistantClient();
+  const cookie = await createSignedInCookie(database, user.id);
+  const reached = await reachConsent(cookie, clientId);
+
+  assert.equal(reached.url?.pathname, "/oauth/consent");
+
+  // Recording the connection fails, as it would with the database down.
+  await database.query(`
+    create or replace function fail_connection_insert() returns trigger as $$
+    begin raise exception 'recording failed'; end;
+    $$ language plpgsql;
+    create trigger fail_connection_insert before insert on assistant_connections
+      for each row execute function fail_connection_insert();
+  `);
+
+  try {
+    const approved = await answerConsent(cookie, reached.url!, true);
+
+    assert.ok(approved.status >= 400, `status ${approved.status}`);
+    assert.equal(replyRedirect(approved), null);
+    assert.ok(!JSON.stringify(approved.payload).includes("code="));
+    assert.equal((await connectionRows(user.id)).length, 0);
+    assert.equal((await assistantEvents()).length, 0);
+  } finally {
+    await database.query(
+      `drop trigger fail_connection_insert on assistant_connections; drop function fail_connection_insert()`,
+    );
+  }
+});
+
 test("a user who hasn't verified their email address is not issued a code", async () => {
   await setSettings({ assistantConnections: true });
 

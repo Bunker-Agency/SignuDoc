@@ -15,7 +15,7 @@ The change is recorded in the site audit trail. Turning it off again ends every 
 
 ## Add SignuDoc to your assistant
 
-Use your site's address followed by `/api/mcp`, for example `https://sign.example.com/api/mcp`.
+Use your site's address followed by `/api/mcp`, for example `https://sign.example.com/api/mcp`. It has to be the address the site is set up with (its `APP_URL`). Another hostname for the same site, such as an alias or a bare `*.vercel.app` address, won't connect.
 
 - **claude.ai:** Settings, Connectors, add a custom connector, and paste the address.
 - **Claude Desktop:** Settings, Connectors, add a custom connector, and paste the address.
@@ -85,7 +85,7 @@ Changing your password alone, without signing out other devices, keeps your conn
 
 ## Session limits
 
-An assistant's access tokens last 1 hour and are renewed in the background, for up to 30 days. If your administrator has set session limits (Settings, Organization, Sign-in security), they apply to a connection as they do to your own sessions: an assistant left unused longer than the idle limit, or connected longer than the maximum session length, is disconnected and has to be approved again. A connection never outlives the install's limits.
+An assistant's access tokens last 1 hour and are renewed in the background. A connection that is used at least once every 30 days keeps going, unless your administrator has set session limits. If your administrator has set session limits (Settings, Organization, Sign-in security), they apply to a connection as they do to your own sessions: an assistant left unused longer than the idle limit, or connected longer than the maximum session length, is disconnected and has to be approved again. A connection never outlives the install's limits.
 
 ## For administrators and self-hosters
 

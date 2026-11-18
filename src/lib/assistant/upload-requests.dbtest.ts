@@ -174,6 +174,19 @@ test("an upload request creates one draft tagged as made through MCP", async () 
 
   assert.equal(status?.status, "done");
   assert.equal(status?.envelopeId, envelopeId);
+
+  // The sender's timeline says where the draft came from.
+  const { getEnvelopeDetailDataForUser } = await import("../envelopes.ts");
+  const detail = await getEnvelopeDetailDataForUser(
+    context.userId,
+    envelopeId,
+    database,
+  );
+
+  assert.deepEqual(
+    detail?.timeline.map((event) => event.description),
+    ["Envelope created by Test Client (AI assistant)"],
+  );
 });
 
 test("refuses a used, expired or other user's upload request", async () => {

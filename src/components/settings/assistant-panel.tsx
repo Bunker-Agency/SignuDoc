@@ -68,6 +68,7 @@ export function AssistantPanel({
         </span>
         <button
           aria-checked={enabled}
+          aria-label="AI assistant connections"
           className={enabled ? "btn-quiet btn-quiet-danger" : "btn-quiet"}
           disabled={isSaving}
           onClick={() => void change(!enabled)}

@@ -29,6 +29,9 @@ export async function readPdfText(pdf: Uint8Array): Promise<PageText[]> {
   const loadingTask = pdfjs.getDocument({
     // pdf.js takes ownership of the buffer it is given, so it gets a copy.
     data: new Uint8Array(pdf),
+    // A sender's PDF is untrusted: no eval'd font programs, no font loading.
+    disableFontFace: true,
+    isEvalSupported: false,
     useSystemFonts: false,
     verbosity: 0,
   });

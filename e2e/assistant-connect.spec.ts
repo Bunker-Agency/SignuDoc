@@ -11,7 +11,9 @@ import { readFile } from "node:fs/promises";
 // An AI assistant connects the way Claude Code does, prepares a draft, and
 // the sender finds it waiting. The assistant's side is plain HTTP (register,
 // authorize, token, MCP); the sender's side runs in a real browser: sign-in
-// hand-off, consent screen, upload page, review page and Connected apps.
+// hand-off, consent screen, the upload page (signed out, through sign-in and
+// back, then the drop), review page and Connected apps. The upload API is
+// covered with a plain PUT. Not covered: the Vercel Blob direct-upload path.
 //
 // It makes its own administrator and sender in the database, so it works on
 // whatever the earlier specs left behind. The playwright config runs it
@@ -107,11 +109,12 @@ test("an assistant connects, prepares a draft, and the sender sees it", async ({
       await expect(adminPage).toHaveURL(/\/dashboard$/);
       await adminPage.goto("/settings");
       await adminPage
-        .getByRole("switch", { name: "Turn on assistant connections" })
+        .getByRole("switch", { name: "AI assistant connections" })
         .click();
       await expect(
         adminPage.getByRole("switch", {
-          name: "Turn off assistant connections",
+          checked: true,
+          name: "AI assistant connections",
         }),
       ).toBeVisible();
       await adminContext.close();
@@ -253,6 +256,34 @@ test("an assistant connects, prepares a draft, and the sender sees it", async ({
       });
 
       expect(again.status()).toBeGreaterThanOrEqual(400);
+    });
+
+    await test.step("the upload page: sign in, land back on it, drop the PDF", async () => {
+      const viaPage = (await call("start_draft", { title: "Page upload" })) as {
+        uploadId: string;
+        uploadPageUrl: string;
+      };
+
+      // Signed out, the link sends the sender to sign in and back.
+      await page.context().clearCookies();
+      await page.goto(viaPage.uploadPageUrl);
+      await expect(page).toHaveURL(/\/login\?/);
+      await page.getByLabel("Email").fill(senderEmail);
+      await page.getByLabel("Password").fill(PASSWORD);
+      await page.getByRole("button", { name: "Log in" }).click();
+      await expect(page).toHaveURL(new RegExp(`/upload/[^/?]+$`));
+      await expect(page.getByLabel("Upload PDF")).toBeAttached();
+
+      await page
+        .getByLabel("Upload PDF")
+        .setInputFiles(await writeSamplePdf(testInfo.outputPath("page.pdf")));
+      await expect(page.getByText(/^Uploaded\./)).toBeVisible();
+
+      const viaPageDone = (await call("get_upload", {
+        uploadId: viaPage.uploadId,
+      })) as { status: string };
+
+      expect(viaPageDone.status).toBe("done");
     });
 
     const done = (await call("get_upload", {
