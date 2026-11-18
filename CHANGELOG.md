@@ -38,11 +38,26 @@ is on.
   Part 11 requirements, risk assessment, traceability matrix and known gaps,
   and the SOC 2 control map, are updated.
 
+### Signing
+
+- Three new field types: Name, Job title and Company. Name boxes fill in with
+  the signer's name as the sender entered it, which the signer cannot change.
+  A signer whose document has a Job title or Company box for them is asked
+  once, in a "Your details" card, and every such box fills in from that
+  answer (an optional one may be left empty).
+- The details appear on the sealed PDF, on the audit certificate (also in
+  copies sent to other recipients) and in the signer-data export.
+
 ### Dependencies
 
 - Better Auth is upgraded to 1.7.25.
 - New: `@better-auth/oauth-provider` 1.7.25 and `@modelcontextprotocol/sdk`
   1.32.2.
+
+The signer details above add two columns and three field types
+(`20261118090000_signer_details.sql`). On Vercel the production build
+applies every migration, so nothing is needed by hand. On other hosts, run
+`npm run db:migrate` as on every deploy.
 
 ## [0.3.0] - 2026-11-16
 

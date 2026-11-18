@@ -7,6 +7,7 @@ import type { AuditEventRecord, EnvelopeRecord } from "../schemas/envelope.ts";
 import type { FieldRecord } from "../schemas/field.ts";
 import type { SignerRecord } from "../schemas/signer.ts";
 import {
+  describeSignerDetails,
   renderEnvelopeCertificatePdf,
   renderFinalizedEnvelopePdf,
 } from "./pdf-finalize.ts";
@@ -524,4 +525,97 @@ test("numbers and dropdown choices are stamped as text, radio buttons as rings",
 
   assert.ok(pdfBytes.byteLength > chosenOnly.byteLength);
   assert.ok(chosenOnly.byteLength > withoutRadios.byteLength);
+});
+
+const DETAIL_TITLE = "Directrice générale";
+const DETAIL_COMPANY = "株式会社テスト";
+
+test("detail boxes are drawn on the document", async () => {
+  const fixture = await makeFixture();
+  const base = {
+    createdAt: 1_800_000_000,
+    envelopeId: fixture.envelope.id,
+    height: 0.03,
+    page: 1,
+    required: true,
+    signerId: "signer-1",
+    submittedAt: 1_800_000_000,
+    updatedAt: 1_800_000_000,
+    width: 0.4,
+    x: 0.1,
+  };
+  const detailFields: FieldRecord[] = [
+    { ...base, id: "name-1", type: "name", value: SIGNER_NAME, y: 0.5 },
+    { ...base, id: "title-1", type: "job_title", value: DETAIL_TITLE, y: 0.55 },
+    {
+      ...base,
+      id: "company-1",
+      type: "company",
+      value: DETAIL_COMPANY,
+      y: 0.6,
+    },
+  ];
+  // Only the detail boxes are passed, so nothing else can hold these values.
+  const pdfBytes = await renderFinalizedEnvelopePdf(
+    {
+      auditEvents: fixture.auditEvents,
+      completedAt: fixture.envelope.completedAt!,
+      envelope: fixture.envelope,
+      fields: detailFields,
+      signers: fixture.signers,
+      sourcePdfKey: fixture.envelope.sourcePdfKey,
+    },
+    { seal: saveUnsealed, storageService: fixture.storageService },
+  );
+  const text = (await extractText(pdfBytes)).replace(/\s+/g, " ");
+
+  assert.ok(text.includes(SIGNER_NAME));
+  assert.ok(text.includes(DETAIL_TITLE));
+  assert.ok(text.includes(DETAIL_COMPANY));
+});
+
+test("the certificate shows the signer's job title and company", async () => {
+  const fixture = await makeFixture();
+  const auditEvents = fixture.auditEvents.map((event) =>
+    event.event === "signed"
+      ? {
+          ...event,
+          metadata: {
+            ...event.metadata,
+            company: DETAIL_COMPANY,
+            jobTitle: DETAIL_TITLE,
+          },
+        }
+      : event,
+  );
+
+  for (const redactForRecipients of [false, true]) {
+    const pdfBytes = await renderEnvelopeCertificatePdf(
+      {
+        auditEvents,
+        envelope: fixture.envelope,
+        redactForRecipients,
+        signers: fixture.signers,
+      },
+      { seal: saveUnsealed },
+    );
+    const text = (await extractText(pdfBytes)).replace(/\s+/g, " ");
+
+    assert.ok(text.includes(`${DETAIL_TITLE}, ${DETAIL_COMPANY}`));
+  }
+});
+
+test("describeSignerDetails joins what was given", () => {
+  assert.equal(
+    describeSignerDetails({
+      company: "Acme Ltd",
+      jobTitle: "Head of Operations",
+    }),
+    "Head of Operations, Acme Ltd",
+  );
+  assert.equal(describeSignerDetails({ company: "Acme Ltd" }), "Acme Ltd");
+  assert.equal(describeSignerDetails({ jobTitle: "" }), null);
+  assert.equal(describeSignerDetails({ company: 5, jobTitle: "  " }), null);
+  assert.equal(describeSignerDetails(undefined), null);
+  assert.equal(describeSignerDetails(null), null);
 });

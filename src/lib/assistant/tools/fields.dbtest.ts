@@ -18,6 +18,7 @@ import {
   replaceDraftEnvelopeSigners,
 } from "../../envelopes.ts";
 import { createStorageService } from "../../services/storage.ts";
+import { DEFAULT_FIELD_SIZE_FRACTIONS } from "../anchor-placement.ts";
 import type { AssistantContext } from "../guard.ts";
 import type { buildAssistantServer as BuildServer } from "../server.ts";
 import {
@@ -195,6 +196,55 @@ test("place_fields saves fields at the anchors", async () => {
   assert.ok(signature);
   // The label ends at about x = 72 + its width; the field starts after it.
   assert.ok(signature.x > (72 + 50) / 612 && signature.x < 0.5);
+});
+
+test("place_fields places Name, Job title and Company boxes at Text's size", async () => {
+  const ada = await createUser("Ada");
+  const envelopeId = await createDraft(ada.userId);
+  const result = await callTool(ada, "place_fields", {
+    envelopeId,
+    fields: [
+      { ...signatureAtLabel, type: "name" },
+      {
+        anchor: { position: "below", text: "Client signature" },
+        required: false,
+        signer: "dana@example.com",
+        type: "job_title",
+      },
+      {
+        anchor: { position: "right", text: "Date:" },
+        signer: "dana@example.com",
+        type: "company",
+      },
+    ],
+  });
+
+  assert.equal(result.isError, false, result.text);
+
+  const saved = await getPrepareEnvelopeDataForUser(ada.userId, envelopeId, {
+    database,
+  });
+  const byType = new Map(saved?.fields.map((field) => [field.type, field]));
+
+  assert.deepEqual([...byType.keys()].sort(), ["company", "job_title", "name"]);
+  assert.equal(byType.get("name")?.required, true);
+  assert.equal(byType.get("job_title")?.required, false);
+  assert.equal(
+    byType.get("company")?.width,
+    DEFAULT_FIELD_SIZE_FRACTIONS.text.width,
+  );
+});
+
+test("place_fields refuses an optional Name box", async () => {
+  const ada = await createUser("Ada");
+  const envelopeId = await createDraft(ada.userId);
+  const result = await callTool(ada, "place_fields", {
+    envelopeId,
+    fields: [{ ...signatureAtLabel, required: false, type: "name" }],
+  });
+
+  assert.equal(result.isError, true);
+  assert.match(result.text, /name fields are always required/);
 });
 
 test("place_fields saves nothing when one anchor is missing", async () => {

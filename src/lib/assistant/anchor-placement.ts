@@ -38,9 +38,12 @@ export const DEFAULT_FIELD_SIZE_FRACTIONS: Record<
   { width: number; height: number }
 > = {
   checkbox: { height: 0.023, width: 0.03 },
+  company: { height: 0.055, width: 0.18 },
   date: { height: 0.045, width: 0.12 },
   dropdown: { height: 0.045, width: 0.22 },
   initials: { height: 0.055, width: 0.14 },
+  job_title: { height: 0.055, width: 0.18 },
+  name: { height: 0.055, width: 0.18 },
   number: { height: 0.045, width: 0.16 },
   radio: { height: 0.023, width: 0.03 },
   signature: { height: 0.07, width: 0.24 },

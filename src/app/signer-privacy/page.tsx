@@ -72,6 +72,11 @@ export default async function SignerPrivacyPage() {
             text and checkboxes, or your reason for declining.
           </li>
           <li>
+            Your job title and company, when the document asks for them. They
+            appear on the audit certificate, including the copies sent to the
+            other recipients.
+          </li>
+          <li>
             Evidence of signing: when you opened, agreed and signed, your IP
             address, your browser&apos;s description of itself, and the checks
             you passed (such as an emailed code).

@@ -3,6 +3,7 @@ import pg from "pg";
 
 import { e2eDatabaseUrl, e2eSetupToken } from "../playwright.config";
 import { extractLink, extractLinks, waitForEmail } from "./support/outbox";
+import { extractPdfText } from "./support/pdf-text";
 import { totpCode } from "./support/totp";
 import { writeSamplePdf } from "./support/sample-pdf";
 
@@ -476,6 +477,18 @@ test("a new install is set up, a sender sends a PDF and a recipient signs it", a
       page.getByRole("textbox", { name: "What this button means" }),
     ).toHaveValue("No");
     await page.setViewportSize({ height: 900, width: 1440 });
+
+    // Boxes for the signer's name, job title and company. The signer types
+    // the job title and company once; the name is the one entered here.
+    await placeField("Name", 0.25, 0.5);
+    await placeField("Job title", 0.55, 0.5);
+    // A new Job title box starts required. This one is left optional.
+    await page.getByRole("button", { exact: true, name: "Optional" }).click();
+    await expect(
+      page.getByRole("button", { exact: true, name: "Optional" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await placeField("Company", 0.55, 0.6);
+
     await expect(page.getByRole("button", { name: "Next →" })).toBeEnabled();
     await page.getByRole("button", { name: "Next →" }).click();
     await expect(page).toHaveURL(/\/review$/);
@@ -485,6 +498,9 @@ test("a new install is set up, a sender sends a PDF and a recipient signs it", a
     await expect(
       page.getByRole("heading", { name: ENVELOPE_TITLE }),
     ).toBeVisible();
+    // The signature, number, dropdown, radio group (once), name, job title
+    // and company.
+    await expect(page.getByText("(7 fields)")).toBeVisible();
     // The sender decides how long signers get and how often to nudge them.
     await page.getByLabel("Signing deadline").selectOption("7");
     await page.getByLabel("Automatic reminders").selectOption("2");
@@ -545,12 +561,51 @@ test("a new install is set up, a sender sends a PDF and a recipient signs it", a
       .check();
     await consent.getByRole("button", { name: "Agree and continue" }).click();
     await expect(consent).toBeHidden();
+
+    // Next the signer is asked, once, for what the detail boxes need. Their
+    // name is shown as the sender entered it, and cannot be changed.
+    const details = recipientPage.getByRole("dialog", { name: "Your details" });
+    const continueButton = details.getByRole("button", { name: "Continue" });
+
+    await expect(details).toBeVisible();
+    await expect(details.getByText("Riley Recipient")).toBeVisible();
+    await expect(
+      recipientPage.getByRole("textbox", { name: "Name" }),
+    ).toHaveCount(0);
+    await expect(continueButton).toBeDisabled();
+    // The job title is optional, so the company alone is enough.
+    await details
+      .getByRole("textbox", { name: "Company" })
+      .fill("Harbour & Finch Ltd");
+    await expect(continueButton).toBeEnabled();
+    await details
+      .getByRole("textbox", { name: "Job title (optional)" })
+      .fill("Managing Partner");
+    await continueButton.click();
+    await expect(details).toBeHidden();
+
     await expect(
       recipientPage.getByRole("img", { name: "Rendered PDF page 1" }),
     ).toBeVisible();
     expect(await readAccentColor(recipientPage)).toBe(BRAND_COLOR);
+
+    const documentPage = recipientPage.locator("[data-field-viewport]");
+
+    await expect(documentPage).toContainText("Riley Recipient");
+    await expect(documentPage).toContainText("Managing Partner");
+    await expect(documentPage).toContainText("Harbour & Finch Ltd");
+    // A detail box is changed through the card, not typed into.
+    await documentPage.getByRole("button", { name: /^Company/ }).click();
+    await expect(details).toBeVisible();
+    await expect(details.getByRole("textbox", { name: "Company" })).toHaveValue(
+      "Harbour & Finch Ltd",
+    );
+    await continueButton.click();
+    await expect(details).toBeHidden();
+
     // The signature, the dropdown and the radio group. The number is
-    // optional, and the two radio buttons are one question.
+    // optional, and the two radio buttons are one question. The company is
+    // already given, the job title is optional and the name is never asked.
     await expect(recipientPage.getByText("3 required remaining")).toBeVisible();
     await recipientPage
       .getByRole("button", { exact: true, name: "Signature" })
@@ -586,6 +641,24 @@ test("a new install is set up, a sender sends a PDF and a recipient signs it", a
     const downloadLinks = extractLinks(completionEmail.text).filter((link) =>
       new URL(link).pathname.startsWith("/api/download/"),
     );
+
+    // The final signer's details are on their row.
+    const detailsDatabase = new pg.Client({ connectionString: e2eDatabaseUrl });
+
+    await detailsDatabase.connect();
+
+    try {
+      const stored = await detailsDatabase.query(
+        `select job_title, company from public.signers where email = $1`,
+        [signerEmail],
+      );
+
+      expect(stored.rows).toEqual([
+        { company: "Harbour & Finch Ltd", job_title: "Managing Partner" },
+      ]);
+    } finally {
+      await detailsDatabase.end();
+    }
 
     expect(downloadLinks.length).toBeGreaterThanOrEqual(1);
 
@@ -643,6 +716,20 @@ test("a new install is set up, a sender sends a PDF and a recipient signs it", a
         ),
       );
     }
+
+    // The name, job title and company are stamped in their boxes on the
+    // signed document itself, not only listed on the certificate.
+    const signedText = await extractPdfText(
+      await (
+        await page.request.get(
+          `/api/envelopes/${envelopeId}/download?type=signed`,
+        )
+      ).body(),
+    );
+
+    expect(signedText).toContain("Riley Recipient");
+    expect(signedText).toContain("Managing Partner");
+    expect(signedText).toContain("Harbour & Finch Ltd");
   });
 
   await test.step("the dashboard shows the first page as a thumbnail", async () => {
@@ -737,7 +824,7 @@ test("a new install is set up, a sender sends a PDF and a recipient signs it", a
       page.getByRole("heading", { name: "Works agreement, phase 2" }),
     ).toBeVisible();
     await expect(page.getByText("Sasha Second")).toBeVisible();
-    await expect(page.getByText("(4 fields)")).toBeVisible();
+    await expect(page.getByText("(7 fields)")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Send envelope" }),
     ).toBeEnabled();
@@ -993,6 +1080,11 @@ test("in Part 11 mode a verified account signs, with its password and a stated m
       })
       .check();
     await consent.getByRole("button", { name: "Agree and continue" }).click();
+    await expect(consent).toBeHidden();
+    // The document has no name, job title or company boxes to ask about.
+    await expect(
+      signerPage.getByRole("dialog", { name: "Your details" }),
+    ).toHaveCount(0);
     await signerPage
       .getByRole("button", { exact: true, name: "Signature" })
       .click();

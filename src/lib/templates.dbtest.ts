@@ -350,6 +350,70 @@ test("a draft made from a template has the fields on the people named for it", a
   }
 });
 
+test("a template keeps name, job title and company boxes", async () => {
+  const userId = await createUser();
+  const draft = await createDraftEnvelope(
+    userId,
+    {
+      sourcePdf: { body: sourcePdf, filename: "lease.pdf" },
+      title: "Offer letter",
+    },
+    { database, storageService },
+  );
+  const saved = await replaceDraftEnvelopeSigners(
+    userId,
+    draft.envelope.id,
+    { signers: [{ email: "riley@example.test", name: "Riley Recipient" }] },
+    database,
+  );
+  const riley = saved.signers[0]!.id!;
+
+  await replaceDraftEnvelopeFields(
+    userId,
+    draft.envelope.id,
+    {
+      fields: [
+        field(riley, "signature", 0.1),
+        field(riley, "name", 0.2),
+        field(riley, "job_title", 0.25, { required: false }),
+        field(riley, "company", 0.3),
+      ],
+    },
+    database,
+  );
+
+  const template = await saveEnvelopeAsTemplate(
+    userId,
+    draft.envelope.id,
+    { name: "Offer" },
+    { database, storageService },
+  );
+  const made = await createDraftFromTemplate(
+    userId,
+    template.id,
+    {
+      signers: [{ email: "tess@example.test", name: "Tess Tenant" }],
+      title: "Offer for Tess",
+    },
+    { database, storageService },
+  );
+  const next = await getPrepareEnvelopeDataForUser(userId, made.envelopeId, {
+    database,
+  });
+
+  assert.ok(next);
+  assert.deepEqual(
+    next.fields
+      .filter((placed) => placed.type !== "signature")
+      .map((placed) => [placed.type, placed.required]),
+    [
+      ["name", true],
+      ["job_title", false],
+      ["company", true],
+    ],
+  );
+});
+
 test("a template belongs to the person who saved it", async () => {
   const owner = await createUser();
   const stranger = await createUser();
