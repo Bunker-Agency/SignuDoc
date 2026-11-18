@@ -573,14 +573,14 @@ test("a new install is set up, a sender sends a PDF and a recipient signs it", a
       recipientPage.getByRole("textbox", { name: "Name" }),
     ).toHaveCount(0);
     await expect(continueButton).toBeDisabled();
-    // The job title is optional, so it alone is not enough.
-    await details
-      .getByRole("textbox", { name: "Job title" })
-      .fill("Managing Partner");
-    await expect(continueButton).toBeDisabled();
+    // The job title is optional, so the company alone is enough.
     await details
       .getByRole("textbox", { name: "Company" })
       .fill("Harbour & Finch Ltd");
+    await expect(continueButton).toBeEnabled();
+    await details
+      .getByRole("textbox", { name: "Job title (optional)" })
+      .fill("Managing Partner");
     await continueButton.click();
     await expect(details).toBeHidden();
 
@@ -641,6 +641,24 @@ test("a new install is set up, a sender sends a PDF and a recipient signs it", a
     const downloadLinks = extractLinks(completionEmail.text).filter((link) =>
       new URL(link).pathname.startsWith("/api/download/"),
     );
+
+    // The final signer's details are on their row.
+    const detailsDatabase = new pg.Client({ connectionString: e2eDatabaseUrl });
+
+    await detailsDatabase.connect();
+
+    try {
+      const stored = await detailsDatabase.query(
+        `select job_title, company from public.signers where email = $1`,
+        [signerEmail],
+      );
+
+      expect(stored.rows).toEqual([
+        { company: "Harbour & Finch Ltd", job_title: "Managing Partner" },
+      ]);
+    } finally {
+      await detailsDatabase.end();
+    }
 
     expect(downloadLinks.length).toBeGreaterThanOrEqual(1);
 

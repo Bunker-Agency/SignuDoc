@@ -919,7 +919,6 @@ function currentSignerIdentityStart(
   return starts[starts.length - 1] ?? 0;
 }
 
-/** What the record shows about how one signer was identified and agreed. */
 // The job title and company a signer gave, as one line for the certificate.
 // Anything that is not a non-empty string counts as not given.
 export function describeSignerDetails(
@@ -935,6 +934,7 @@ export function describeSignerDetails(
   return given.length > 0 ? given.join(", ") : null;
 }
 
+/** What the record shows about how one signer was identified and agreed. */
 function describeSignerEvidence(
   signer: SignerRecord,
   auditEvents: readonly AuditEventRecord[],

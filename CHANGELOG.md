@@ -8,6 +8,20 @@ release says when it does.
 
 ## [Unreleased]
 
+### Signing
+
+- Three new field types: Name, Job title and Company. A signer who meets one
+  is asked once, in a "Your details" card, for the job title and company the
+  document needs (an optional one may be left empty). Their name is shown as
+  the sender entered it and cannot be changed.
+- The details appear on the sealed PDF, on the audit certificate (also in
+  copies sent to other recipients) and in the signer-data export.
+
+This change adds a column pair to the database
+(`20261118090000_signer_details.sql`). On Vercel the production build
+applies it, so nothing is needed by hand. On other hosts, run
+`npm run db:migrate` as on every deploy.
+
 ## [0.3.0] - 2026-11-16
 
 Sign-in security and audit features for organizations that need them, and

@@ -2285,7 +2285,8 @@ function buildSignerSubmission(
         checked: null,
         fieldId: field.id,
         imageKey: null,
-        inputMethod: "auto",
+        // An optional box left empty was not filled in by anyone.
+        inputMethod: value ? "auto" : null,
         submittedAt: value ? submittedAt : null,
         value,
       });

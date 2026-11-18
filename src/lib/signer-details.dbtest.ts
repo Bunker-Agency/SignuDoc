@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 
 import type pg from "pg";
+import { ZodError } from "zod";
 
 import { openTestDatabase } from "./db/test-database.ts";
 import { ELECTRONIC_RECORDS_DISCLOSURE_VERSION } from "./electronic-records-disclosure.ts";
@@ -303,7 +304,10 @@ test("a missing required detail is refused", async () => {
 
   await assert.rejects(submit(sent.token, sent.fieldIds[1]), (error) => {
     assert.ok(error instanceof SigningMutationError);
-    assert.equal(error.message, "Complete all required fields before finishing.");
+    assert.equal(
+      error.message,
+      "Complete all required fields before finishing.",
+    );
     return true;
   });
   assert.equal((await readSigner(sent.signerId)).status, "notified");
@@ -318,6 +322,7 @@ test("a whitespace-only detail is refused", async () => {
   // The schema turns this away before the signing code sees it.
   await assert.rejects(
     submit(sent.token, sent.fieldIds[1], { company: "   " }),
+    (error) => error instanceof ZodError,
   );
   assert.equal((await readSigner(sent.signerId)).status, "notified");
 });
@@ -334,6 +339,7 @@ test("an optional detail may be left out", async () => {
 
   assert.equal(box?.value, null);
   assert.equal(box?.submitted_at, null);
+  assert.equal(box?.input_method, null);
   assert.equal((await readSigner(sent.signerId)).job_title, null);
   assert.equal("jobTitle" in (await signedMetadata(sent.envelopeId)), false);
 });
@@ -352,7 +358,7 @@ test("the signer cannot change their name", async () => {
 
   await submit(sent.token, sent.fieldIds[1], {
     name: "Someone Else",
-  } as unknown as { company?: string; jobTitle?: string });
+  });
 
   const [box] = await readFields(sent.envelopeId);
 

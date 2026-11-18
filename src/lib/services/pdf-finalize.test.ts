@@ -569,6 +569,7 @@ test("detail boxes are drawn on the document", async () => {
   );
   const text = (await extractText(pdfBytes)).replace(/\s+/g, " ");
 
+  assert.ok(text.includes(SIGNER_NAME));
   assert.ok(text.includes(DETAIL_TITLE));
   assert.ok(text.includes(DETAIL_COMPANY));
 });

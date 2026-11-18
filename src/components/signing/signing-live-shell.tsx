@@ -342,7 +342,10 @@ function getCompletionValue(
   }
 
   if (field.type === "job_title" || field.type === "company") {
-    return getSignerDetailEntry(field, signerDetails) || getFieldLabel(field);
+    return (
+      getSignerDetailEntry(field, signerDetails) ||
+      (field.required ? getFieldLabel(field) : "Optional")
+    );
   }
 
   if (field.type === "checkbox") {
@@ -2363,7 +2366,9 @@ function SignerDetailsDialog({
         input.need === null ? null : (
           <label className="grid gap-1.5" key={input.key}>
             <span className="text-[0.8125rem] font-semibold text-(--secondary)">
-              {input.label}
+              {input.need === "optional"
+                ? `${input.label} (optional)`
+                : input.label}
             </span>
             <Input
               aria-required={input.need === "required" ? true : undefined}
