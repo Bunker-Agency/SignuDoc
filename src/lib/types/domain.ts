@@ -43,6 +43,9 @@ export const fieldTypes = [
   "number",
   "dropdown",
   "radio",
+  "name",
+  "job_title",
+  "company",
 ] as const;
 
 export const fieldInputMethods = ["typed", "drawn", "auto"] as const;

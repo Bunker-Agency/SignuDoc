@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  BriefcaseIcon,
+  Building2Icon,
   CalendarIcon,
   CaseSensitiveIcon,
   CircleDotIcon,
@@ -9,6 +11,7 @@ import {
   SquareCheckIcon,
   SquareChevronDownIcon,
   TypeIcon,
+  UserIcon,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -1176,9 +1179,12 @@ function PrepareLiveShellContent({
 
 const fieldToolIcons: Record<PrepareFieldType, LucideIcon> = {
   checkbox: SquareCheckIcon,
+  company: Building2Icon,
   date: CalendarIcon,
   dropdown: SquareChevronDownIcon,
   initials: CaseSensitiveIcon,
+  job_title: BriefcaseIcon,
+  name: UserIcon,
   number: HashIcon,
   radio: CircleDotIcon,
   signature: SignatureIcon,

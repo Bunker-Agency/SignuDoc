@@ -46,6 +46,9 @@ type ReviewRecordView = {
 };
 
 type ReviewFieldSummaryLabel =
+  | "Company"
+  | "Job title"
+  | "Name"
   | "Dropdown"
   | "Number"
   | "Radio group"

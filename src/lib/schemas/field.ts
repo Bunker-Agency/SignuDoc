@@ -6,6 +6,7 @@ import {
   MAX_NUMBER_ENTRY_LENGTH,
   MAX_RADIO_GROUP_BUTTONS,
 } from "../field-choices.ts";
+import { MAX_SIGNER_DETAIL_LENGTH } from "../signer-details.ts";
 import { fieldInputMethods, fieldTypes } from "../types/domain.ts";
 import {
   idSchema,
@@ -95,7 +96,8 @@ export const fieldPlacementSchema = z
     if (
       (field.type === "signature" ||
         field.type === "initials" ||
-        field.type === "date") &&
+        field.type === "date" ||
+        field.type === "name") &&
       !field.required
     ) {
       ctx.addIssue({
@@ -244,9 +246,23 @@ export const signingFieldSubmissionSchema = z.union([
   radioSubmissionSchema,
 ]);
 
+const signerDetailSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_SIGNER_DETAIL_LENGTH);
+
 export const signingSubmissionSchema = z.object({
   clientTimezoneOffsetMinutes: z.number().int().min(-840).max(840),
   fields: z.array(signingFieldSubmissionSchema),
+  // What the signer typed for their Job title and Company boxes. The name is
+  // not here: a signer cannot change it, so any `name` sent is dropped.
+  signerDetails: z
+    .object({
+      company: signerDetailSchema.optional(),
+      jobTitle: signerDetailSchema.optional(),
+    })
+    .optional(),
   // Part 11 envelopes: both parts of the signer's electronic signature,
   // given again for this signature (21 CFR 11.200(a)), and their confirmation
   // of what it means.

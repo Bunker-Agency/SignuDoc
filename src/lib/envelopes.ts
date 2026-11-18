@@ -311,8 +311,11 @@ export type DashboardEnvelopeListItem = {
 type ReviewFieldSummary =
   | "Checkbox"
   | "Date"
+  | "Company"
   | "Dropdown"
   | "Initials"
+  | "Job title"
+  | "Name"
   | "Number"
   | "Radio group"
   | "Signature"
@@ -479,9 +482,12 @@ const FIELD_TYPE_SUMMARY_LABELS: Record<
   ReviewFieldSummary
 > = {
   checkbox: "Checkbox",
+  company: "Company",
   date: "Date",
   dropdown: "Dropdown",
   initials: "Initials",
+  job_title: "Job title",
+  name: "Name",
   number: "Number",
   radio: "Radio group",
   signature: "Signature",
@@ -490,9 +496,12 @@ const FIELD_TYPE_SUMMARY_LABELS: Record<
 
 const FIELD_TYPE_SORT_ORDER: Record<FieldRecord["type"], number> = {
   checkbox: 6,
+  company: 10,
   date: 2,
   dropdown: 5,
   initials: 1,
+  job_title: 9,
+  name: 8,
   number: 4,
   radio: 7,
   signature: 0,
