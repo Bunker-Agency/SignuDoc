@@ -31,6 +31,9 @@ export type EndConnectionReason = "revoked" | "limits";
 export type EndUserConnectionsReason =
   "password_reset" | "sign_in_reset" | "sessions_revoked";
 
+/** Who ended a connection, when a person did (the sender revoking it). */
+export type ConnectionActor = { email: string; userId: string };
+
 export type AssistantConnection = {
   approvedAt: number;
   clientId: string;
@@ -199,14 +202,15 @@ async function recordDisconnected(
   input: {
     clientId: string;
     clientName: string;
+    actor?: ConnectionActor;
     reason: EndConnectionReason | EndUserConnectionsReason;
     userId: string;
   },
 ): Promise<void> {
   await recordSystemAuditEvent(
     {
-      actorEmail: null,
-      actorUserId: null,
+      actorEmail: input.actor?.email ?? null,
+      actorUserId: input.actor?.userId ?? null,
       event: "assistant_disconnected",
       metadata: {
         clientId: input.clientId,
@@ -226,7 +230,12 @@ async function recordDisconnected(
  * True when there was one.
  */
 export async function endAssistantConnection(
-  input: { clientId: string; reason: EndConnectionReason; userId: string },
+  input: {
+    actor?: ConnectionActor;
+    clientId: string;
+    reason: EndConnectionReason;
+    userId: string;
+  },
   database: DbExecutor = getDb(),
 ): Promise<boolean> {
   return inTransaction(database, async (tx) => {
@@ -249,6 +258,7 @@ export async function endAssistantConnection(
     }
 
     await recordDisconnected(tx, {
+      actor: input.actor,
       clientId: input.clientId,
       clientName: row.clientName,
       reason: input.reason,
