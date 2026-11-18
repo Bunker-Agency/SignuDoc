@@ -121,7 +121,18 @@ function describe(reply: AuthReply): string {
  * failure, so a test that empties the table or starts before the migration
  * would find it missing.
  */
+let staleKeysCleared = false;
+
 export async function seedAssistantResource(database: pg.Pool): Promise<void> {
+  // The signing keys are encrypted with the secret in use. A key left by
+  // another run (the end-to-end test shares this database and uses its own
+  // secret) can't be read, so it is cleared once, before this process makes
+  // its own.
+  if (!staleKeysCleared) {
+    staleKeysCleared = true;
+    await database.query(`delete from public."jwks"`);
+  }
+
   await database.query(
     `insert into public."oauthResource" (id, identifier, name, "createdAt", "updatedAt")
        values ($1, $2, 'SignuDoc MCP', now(), now())
