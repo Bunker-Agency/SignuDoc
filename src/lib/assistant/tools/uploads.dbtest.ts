@@ -122,6 +122,7 @@ test("start_draft returns page and API links that expire in 30 minutes", async (
   assert.equal(result.isError, false);
 
   const body = JSON.parse(result.text) as {
+    askTheSender: string;
     expiresAt: number;
     note: string;
     uploadApiUrl: string;
@@ -142,6 +143,10 @@ test("start_draft returns page and API links that expire in 30 minutes", async (
   assert.ok(body.expiresAt >= before + 1800 && body.expiresAt <= before + 1810);
   assert.match(body.note, /application\/pdf/);
   assert.match(body.note, /4\.5 MB/);
+  // The sender has to drop the PDF themselves, and the assistant is told so.
+  assert.ok(body.askTheSender.includes(body.uploadPageUrl));
+  assert.match(body.askTheSender, /drop the PDF on it/);
+  assert.match(body.note, /No draft exists until the PDF arrives/);
 
   const stored = await database.query(
     `select title, user_id, client_id from public.assistant_upload_requests where id = $1`,
@@ -161,10 +166,11 @@ test("get_upload reports waiting, then done with review links", async () => {
   const waiting = JSON.parse(
     (await callTool(context, "get_upload", { uploadId: started.uploadId }))
       .text,
-  ) as { envelopeId: unknown; status: string };
+  ) as { envelopeId: unknown; note?: string; status: string };
 
   assert.equal(waiting.status, "waiting");
   assert.equal(waiting.envelopeId, null);
+  assert.match(waiting.note ?? "", /ask them rather than checking again/);
 
   const { envelopeId } = await consumeUploadRequest(
     {
