@@ -184,6 +184,33 @@ const fieldTools: readonly FieldTool[] = [
     type: "text",
   },
   {
+    defaultHeight: 0.055,
+    defaultWidth: 0.18,
+    label: "Name",
+    minHeight: 0.0045,
+    minWidth: 0.006,
+    placeholderLabel: "Name",
+    type: "name",
+  },
+  {
+    defaultHeight: 0.055,
+    defaultWidth: 0.18,
+    label: "Job title",
+    minHeight: 0.0045,
+    minWidth: 0.006,
+    placeholderLabel: "Job title",
+    type: "job_title",
+  },
+  {
+    defaultHeight: 0.055,
+    defaultWidth: 0.18,
+    label: "Company",
+    minHeight: 0.0045,
+    minWidth: 0.006,
+    placeholderLabel: "Company",
+    type: "company",
+  },
+  {
     defaultHeight: 0.023,
     defaultWidth: 0.03,
     label: "Checkbox",
@@ -222,10 +249,13 @@ const fieldTools: readonly FieldTool[] = [
 ] as const;
 
 // Fields the sender may leave optional. A signature, initials and the date
-// are always needed.
+// are always needed, and so is a name: it is the one detail a signer cannot
+// leave out.
 function canBeOptional(type: PrepareFieldType) {
   return (
     type === "text" ||
+    type === "job_title" ||
+    type === "company" ||
     type === "checkbox" ||
     type === "number" ||
     type === "dropdown" ||
