@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { registerHooks } from "node:module";
 import { after, before, beforeEach, test } from "node:test";
 
 import { oauthProvider } from "@better-auth/oauth-provider";
@@ -17,6 +16,7 @@ import {
   saveSettings,
 } from "../settings.ts";
 import { buildOAuthProviderOptions, classifyOAuthPath } from "./oauth.ts";
+import { registerAppModuleResolution } from "./test-module-resolution.ts";
 
 // SignuDoc as an OAuth authorization server for AI assistants, against a
 // real Postgres and the real auth handler: registration, what is reachable
@@ -41,26 +41,7 @@ const env = {
 // needs both spelled out, and next/* with its file name.
 Object.assign(process.env, env);
 
-const SRC = new URL("../../", import.meta.url);
-
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (/^next\/[a-z-]+$/.test(specifier)) {
-      return nextResolve(`${specifier}.js`, context);
-    }
-
-    if (specifier.startsWith("@/")) {
-      const path = specifier.slice(2);
-
-      return nextResolve(
-        new URL(/\.[a-z]+$/.test(path) ? path : `${path}.ts`, SRC).href,
-        context,
-      );
-    }
-
-    return nextResolve(specifier, context);
-  },
-});
+registerAppModuleResolution();
 
 let database: pg.Pool;
 let replaced: pg.Pool | null = null;

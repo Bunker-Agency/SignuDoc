@@ -11,6 +11,7 @@ import {
   type SsoOption,
 } from "@/components/auth/sso-button";
 import { FieldShell, ShellButton } from "@/components/shared/form-shell";
+import { signedOAuthQuery } from "@/lib/assistant/signed-query";
 import { authClient } from "@/lib/auth/client";
 import { forgotPasswordSchema, loginSchema } from "@/lib/schemas/auth";
 import {
@@ -28,6 +29,51 @@ type AuthErrorLike = {
   code?: string;
   message?: string;
 };
+
+// When the page was reached from an AI assistant's authorization, signing
+// in carries on with it: the auth server answers with where to go next (the
+// consent page), and the auth client goes there. These are the reasons it
+// can stop after the sign-in itself worked.
+type HandOffStop = {
+  href: string;
+  linkLabel: string;
+  message: string;
+};
+
+function describeHandOffStop(
+  error: AuthErrorLike | null | undefined,
+): HandOffStop | null {
+  switch (error?.code) {
+    case "ASSISTANT_CONNECTIONS_OFF":
+      return {
+        href: "/dashboard",
+        linkLabel: "Go to your dashboard",
+        message: "AI assistant connections are turned off on this site.",
+      };
+    case "TWO_STEP_SETUP_REQUIRED":
+      return {
+        href: "/two-step-setup",
+        linkLabel: "Set up two-step sign-in",
+        message: "Set up two-step sign-in before you connect an AI assistant.",
+      };
+    default:
+      return null;
+  }
+}
+
+/** Whether a reply says where to go next, rather than that it's done. */
+function isRedirectReply(
+  data: unknown,
+): data is { redirect: true; url: string } {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "redirect" in data &&
+    data.redirect === true &&
+    "url" in data &&
+    typeof data.url === "string"
+  );
+}
 
 type LoginFormValues = {
   email: string;
@@ -149,6 +195,8 @@ function LiveLoginShell({
   const [showResendVerification, setShowResendVerification] = useState(false);
   // The password was right and the account uses two-step sign-in.
   const [needsSecondStep, setNeedsSecondStep] = useState(false);
+  // Signed in, but an assistant's authorization could not carry on.
+  const [handOffStop, setHandOffStop] = useState<HandOffStop | null>(null);
 
   function handleChange(field: keyof LoginFormValues) {
     return (event: ChangeEvent<HTMLInputElement>) => {
@@ -246,6 +294,13 @@ function LiveLoginShell({
       const normalizedErrorMessage = normalizeAuthErrorMessage(result.error);
 
       const errorCode = (result.error as AuthErrorLike).code;
+      const stop = describeHandOffStop(result.error as AuthErrorLike);
+
+      if (stop) {
+        setHandOffStop(stop);
+        setIsSubmitting(false);
+        return;
+      }
 
       if (
         errorCode === "SIGN_IN_LOCKED" ||
@@ -276,6 +331,12 @@ function LiveLoginShell({
     ) {
       setNeedsSecondStep(true);
       setIsSubmitting(false);
+      return;
+    }
+
+    // An assistant's authorization carries on: the auth client is already
+    // on its way there.
+    if (isRedirectReply(result.data)) {
       return;
     }
 
@@ -375,6 +436,10 @@ function LiveLoginShell({
     return <ResetPasswordCard resetToken={resetToken} />;
   }
 
+  if (handOffStop) {
+    return <HandOffStoppedCard stop={handOffStop} />;
+  }
+
   if (needsSecondStep) {
     return (
       <SecondStepCard
@@ -384,6 +449,7 @@ function LiveLoginShell({
           setBannerMessage(message);
         }}
         onSignedIn={() => router.replace("/dashboard")}
+        onStopped={setHandOffStop}
       />
     );
   }
@@ -729,9 +795,15 @@ type SecondStepCardProps = {
   /** Back to the password, with a reason to show there. */
   onRestart: (message: string) => void;
   onSignedIn: () => void;
+  /** Signed in, but an assistant's authorization could not carry on. */
+  onStopped: (stop: HandOffStop) => void;
 };
 
-function SecondStepCard({ onRestart, onSignedIn }: SecondStepCardProps) {
+function SecondStepCard({
+  onRestart,
+  onSignedIn,
+  onStopped,
+}: SecondStepCardProps) {
   const [code, setCode] = useState("");
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -759,27 +831,52 @@ function SecondStepCard({ onRestart, onSignedIn }: SecondStepCardProps) {
     setError(null);
     setIsSubmitting(true);
 
+    // This page's address still carries an assistant's signed request, if
+    // it was reached from one. Sent along, the second step carries on with
+    // the authorization too.
+    const oauthQuery = signedOAuthQuery(window.location.search);
+    let leaving = false;
+
     try {
       const response = await fetch(
         useBackupCode
           ? "/api/auth/two-factor/verify-backup-code"
           : "/api/auth/two-factor/verify-totp",
         {
-          body: JSON.stringify({ code: trimmed }),
-          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            code: trimmed,
+            ...(oauthQuery ? { oauth_query: oauthQuery } : {}),
+          }),
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
           method: "POST",
         },
       );
-
-      if (response.ok) {
-        onSignedIn();
-        return;
-      }
-
       const payload = (await response.json().catch(() => null)) as {
         code?: string;
         message?: string;
       } | null;
+
+      if (response.ok) {
+        if (isRedirectReply(payload)) {
+          // Stays busy while the browser leaves.
+          leaving = true;
+          window.location.assign(payload.url);
+          return;
+        }
+
+        onSignedIn();
+        return;
+      }
+
+      const stop = describeHandOffStop(payload);
+
+      if (stop) {
+        onStopped(stop);
+        return;
+      }
 
       switch (payload?.code) {
         case "INVALID_CODE":
@@ -807,7 +904,9 @@ function SecondStepCard({ onRestart, onSignedIn }: SecondStepCardProps) {
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
-      setIsSubmitting(false);
+      if (!leaving) {
+        setIsSubmitting(false);
+      }
     }
   }
 
@@ -870,6 +969,32 @@ function SecondStepCard({ onRestart, onSignedIn }: SecondStepCardProps) {
               : "Lost your phone? Use a backup code"}
           </button>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function HandOffStoppedCard({ stop }: { stop: HandOffStop }) {
+  return (
+    <section className="panel w-full max-w-[460px] p-8 sm:p-10">
+      <div className="space-y-7">
+        <div className="space-y-2">
+          <p className="section-eyebrow">AI assistant</p>
+          <h1 className="text-[clamp(1.875rem,4.5vw,2.375rem)] font-extrabold leading-[1.08] tracking-[-0.035em] text-(--fg)">
+            You&apos;re signed in
+          </h1>
+        </div>
+
+        <p className="notice notice-danger" role="alert">
+          {stop.message}
+        </p>
+
+        <Link
+          className="w-fit text-sm font-bold text-(--accent-ink) underline-offset-4 hover:underline"
+          href={stop.href}
+        >
+          {stop.linkLabel}
+        </Link>
       </div>
     </section>
   );

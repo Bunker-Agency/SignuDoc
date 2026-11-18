@@ -1,0 +1,81 @@
+// The OAuth provider sends a sender to the sign-in and consent pages with
+// the assistant's authorization request in the query, signed: `sig` covers
+// every parameter named in `ba_param`, and `exp` limits how long it holds.
+// These helpers are shared by the browser and the server, so they import
+// nothing.
+
+const SIGNATURE_PARAM = "sig";
+const SIGNED_NAMES_PARAM = "ba_param";
+
+// Added by the provider when it signs, and not part of the assistant's own
+// request.
+const SIGNING_PARAMS = new Set([
+  SIGNATURE_PARAM,
+  SIGNED_NAMES_PARAM,
+  "ba_iat",
+  "ba_pl",
+  "exp",
+]);
+
+/**
+ * The signed part of a page's query, as the provider expects it back in
+ * `oauth_query`: the parameters `ba_param` names, `ba_param` itself and
+ * `sig`. Null when the query carries no signed request. This only picks the
+ * parameters out; the server checks the signature.
+ */
+export function signedOAuthQuery(
+  search: string | URLSearchParams,
+): string | null {
+  const params = new URLSearchParams(search);
+  const signedNames = new Set(params.getAll(SIGNED_NAMES_PARAM));
+
+  if (!params.has(SIGNATURE_PARAM) || signedNames.size === 0) {
+    return null;
+  }
+
+  const signed = new URLSearchParams();
+
+  for (const [key, value] of params) {
+    if (
+      key === SIGNATURE_PARAM ||
+      key === SIGNED_NAMES_PARAM ||
+      signedNames.has(key)
+    ) {
+      signed.append(key, value);
+    }
+  }
+
+  return signed.toString();
+}
+
+/**
+ * Where single sign-on returns to when the sign-in page was reached from an
+ * assistant's authorization: the authorization request itself, so that the
+ * provider picks it up again with the new session. Null when the page was
+ * not reached that way.
+ *
+ * Single sign-on leaves the site for the identity provider and comes back
+ * through a plain redirect, which carries no `oauth_query`. Asking again is
+ * safe: the provider checks the request afresh, as it did the first time.
+ */
+export function ssoResumePath(search: string | URLSearchParams): string | null {
+  const signed = signedOAuthQuery(search);
+
+  if (!signed) {
+    return null;
+  }
+
+  const request = new URLSearchParams();
+
+  for (const [key, value] of new URLSearchParams(signed)) {
+    if (!SIGNING_PARAMS.has(key)) {
+      request.append(key, value);
+    }
+  }
+
+  if (!request.has("client_id")) {
+    return null;
+  }
+
+  return `/api/auth/oauth2/authorize?${request.toString()}`;
+}

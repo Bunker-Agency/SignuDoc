@@ -3,11 +3,16 @@
 import { useState } from "react";
 
 import { ShellButton } from "@/components/shared/form-shell";
+import { signedOAuthQuery, ssoResumePath } from "@/lib/assistant/signed-query";
 
 // "Continue with <provider>": hands the visitor to the organization's
 // identity provider (lib/auth/sso.ts). Better Auth sends them back to
 // /api/auth/callback/sso, and from there to the dashboard, or to the sign-in
 // page with ?error= when it did not work.
+//
+// When the sign-in page was reached from an AI assistant's authorization,
+// the provider's round trip comes back to that authorization instead, which
+// carries on with the new session (signed-query.ts).
 
 export type SsoOption = { name: string };
 
@@ -53,11 +58,15 @@ export function SsoButton({
 
     try {
       const origin = window.location.origin;
+      const resumePath = ssoResumePath(window.location.search);
+      const signedQuery = signedOAuthQuery(window.location.search);
+      const callbackURL = `${origin}${resumePath ?? "/dashboard"}`;
       const response = await fetch("/api/auth/sign-in/social", {
         body: JSON.stringify({
-          callbackURL: `${origin}/dashboard`,
-          errorCallbackURL: `${origin}/login`,
-          newUserCallbackURL: `${origin}/dashboard`,
+          callbackURL,
+          // Back to this page, still able to carry on, to try again.
+          errorCallbackURL: `${origin}/login${signedQuery ? `?${signedQuery}` : ""}`,
+          newUserCallbackURL: callbackURL,
           provider: "sso",
         }),
         headers: { "content-type": "application/json" },

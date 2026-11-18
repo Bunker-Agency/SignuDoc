@@ -18,6 +18,7 @@ import {
   assistantDiscoveryGate,
   buildOAuthProviderOptions,
   enforceAssistantOAuthGate,
+  recordAssistantConsent,
 } from "../assistant/oauth.ts";
 import { type Branding } from "../branding.ts";
 import { getDb } from "../db/connection.ts";
@@ -510,6 +511,11 @@ export function createAppAuth({
             message: decision.message,
           });
         }
+      }),
+      // A sender approving an AI assistant on the consent page is recorded
+      // as a connection (src/lib/assistant/oauth.ts).
+      after: createAuthMiddleware(async (ctx) => {
+        await recordAssistantConsent(ctx);
       }),
     },
     // Better Auth limits its own routes (three sign-in or sign-up attempts

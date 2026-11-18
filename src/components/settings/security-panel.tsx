@@ -23,6 +23,8 @@ type AuditResponse = {
 const EVENT_LABELS: Record<SystemAuditEvent["event"], string> = {
   account_closure_requested: "Account closure requested",
   account_deleted: "Account deleted",
+  assistant_connected: "AI assistant connected",
+  assistant_disconnected: "AI assistant disconnected",
   email_domain_changed: "Email domain changed",
   identity_verification_revoked: "Identity confirmation taken back",
   identity_verified: "Identity confirmed",
@@ -94,6 +96,9 @@ function describeEvent(event: SystemAuditEvent): string {
       return metadata.action === "removed" ? "Removed" : "Replaced";
     case "email_domain_changed":
       return typeof metadata.domain === "string" ? metadata.domain : "";
+    case "assistant_connected":
+    case "assistant_disconnected":
+      return typeof metadata.clientName === "string" ? metadata.clientName : "";
     default:
       return target ?? "";
   }
