@@ -55,3 +55,17 @@ test("single sign-on from a plain sign-in page goes where it always did", () => 
   assert.equal(ssoResumePath(""), null);
   assert.equal(ssoResumePath("?error=access_denied"), null);
 });
+
+test("single sign-on doesn't ask for the sign-in it has just made", () => {
+  const withPrompt = (prompt: string) =>
+    new URL(
+      ssoResumePath(
+        `?${SIGNED.replace("&sig=", `&prompt=${encodeURIComponent(prompt)}&ba_param=prompt&sig=`)}`,
+      ) ?? "",
+      "http://localhost:3998",
+    ).searchParams.get("prompt");
+
+  assert.equal(withPrompt("login"), null);
+  assert.equal(withPrompt("login consent"), "consent");
+  assert.equal(withPrompt("consent"), "consent");
+});

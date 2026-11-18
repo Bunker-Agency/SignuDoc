@@ -77,5 +77,18 @@ export function ssoResumePath(search: string | URLSearchParams): string | null {
     return null;
   }
 
+  // The sign-in that prompt=login asked for is the one just made. Left in,
+  // it would send the sender back to the sign-in page, as the provider
+  // itself drops it when a password sign-in picks the request up.
+  const prompts = (request.get("prompt") ?? "")
+    .split(" ")
+    .filter((prompt) => prompt !== "" && prompt !== "login");
+
+  if (prompts.length > 0) {
+    request.set("prompt", prompts.join(" "));
+  } else {
+    request.delete("prompt");
+  }
+
   return `/api/auth/oauth2/authorize?${request.toString()}`;
 }

@@ -11,7 +11,7 @@ import {
   type SsoOption,
 } from "@/components/auth/sso-button";
 import { FieldShell, ShellButton } from "@/components/shared/form-shell";
-import { signedOAuthQuery } from "@/lib/assistant/signed-query";
+import { signedOAuthQuery, ssoResumePath } from "@/lib/assistant/signed-query";
 import { authClient } from "@/lib/auth/client";
 import { forgotPasswordSchema, loginSchema } from "@/lib/schemas/auth";
 import {
@@ -27,6 +27,8 @@ const verificationRequiredMessage =
 
 type AuthErrorLike = {
   code?: string;
+  /** OAuth's own error field, which the provider's refusals use. */
+  error?: string;
   message?: string;
 };
 
@@ -35,6 +37,7 @@ type AuthErrorLike = {
 // consent page), and the auth client goes there. These are the reasons it
 // can stop after the sign-in itself worked.
 type HandOffStop = {
+  heading: string;
   href: string;
   linkLabel: string;
   message: string;
@@ -43,15 +46,29 @@ type HandOffStop = {
 function describeHandOffStop(
   error: AuthErrorLike | null | undefined,
 ): HandOffStop | null {
+  // The signed request on this page lasts ten minutes. Asking for the
+  // authorization again gets a fresh one.
+  if (error?.error === "invalid_signature") {
+    return {
+      heading: "Start again",
+      href: ssoResumePath(window.location.search) ?? "/login",
+      linkLabel: "Try again",
+      message:
+        "This request from your AI assistant has expired. Try again, or start connecting again from your assistant.",
+    };
+  }
+
   switch (error?.code) {
     case "ASSISTANT_CONNECTIONS_OFF":
       return {
+        heading: "You're signed in",
         href: "/dashboard",
         linkLabel: "Go to your dashboard",
         message: "AI assistant connections are turned off on this site.",
       };
     case "TWO_STEP_SETUP_REQUIRED":
       return {
+        heading: "You're signed in",
         href: "/two-step-setup",
         linkLabel: "Set up two-step sign-in",
         message: "Set up two-step sign-in before you connect an AI assistant.",
@@ -975,13 +992,16 @@ function SecondStepCard({
 }
 
 function HandOffStoppedCard({ stop }: { stop: HandOffStop }) {
+  const linkClassName =
+    "w-fit text-sm font-bold text-(--accent-ink) underline-offset-4 hover:underline";
+
   return (
     <section className="panel w-full max-w-[460px] p-8 sm:p-10">
       <div className="space-y-7">
         <div className="space-y-2">
           <p className="section-eyebrow">AI assistant</p>
           <h1 className="text-[clamp(1.875rem,4.5vw,2.375rem)] font-extrabold leading-[1.08] tracking-[-0.035em] text-(--fg)">
-            You&apos;re signed in
+            {stop.heading}
           </h1>
         </div>
 
@@ -989,12 +1009,17 @@ function HandOffStoppedCard({ stop }: { stop: HandOffStop }) {
           {stop.message}
         </p>
 
-        <Link
-          className="w-fit text-sm font-bold text-(--accent-ink) underline-offset-4 hover:underline"
-          href={stop.href}
-        >
-          {stop.linkLabel}
-        </Link>
+        {stop.href.startsWith("/api/") ? (
+          // The authorization itself, which answers with a redirect rather
+          // than a page.
+          <a className={linkClassName} href={stop.href}>
+            {stop.linkLabel}
+          </a>
+        ) : (
+          <Link className={linkClassName} href={stop.href}>
+            {stop.linkLabel}
+          </Link>
+        )}
       </div>
     </section>
   );
