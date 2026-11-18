@@ -420,6 +420,76 @@ test("status reports waiting, expired and nothing for another user", async () =>
   );
 });
 
+test("a claimed link with no draft is waiting briefly, then expired (stale claim)", async () => {
+  const context = await createUser();
+  const request = await createUploadRequest({ context, title: "S" }, database);
+  const now = Math.floor(Date.now() / 1000);
+
+  // Claimed, but the draft never got made (the server died in between).
+  await database.query(
+    `update public.assistant_upload_requests set used_at = $2 where id = $1`,
+    [request.uploadId, now],
+  );
+
+  const at = async (when: number) =>
+    (
+      await getUploadRequestStatus(
+        context.userId,
+        request.uploadId,
+        when,
+        database,
+      )
+    )?.status;
+
+  assert.equal(await at(now + 60), "waiting");
+  assert.equal(await at(now + 5 * 60), "expired");
+});
+
+test("a link whose draft was deleted reports expired, not waiting", async () => {
+  const context = await createUser();
+  const request = await createUploadRequest({ context, title: "S" }, database);
+  const { envelopeId } = await consumeUploadRequest(
+    { sessionUserId: null, sourcePdf: pdfInput(), token: request.token },
+    options(),
+  );
+  const now = Math.floor(Date.now() / 1000);
+
+  assert.equal(
+    (
+      await getUploadRequestStatus(
+        context.userId,
+        request.uploadId,
+        now,
+        database,
+      )
+    )?.status,
+    "done",
+  );
+
+  await database.query(`delete from public.envelopes where id = $1`, [
+    envelopeId,
+  ]);
+
+  const after = await database.query(
+    `select envelope_id, used_at from public.assistant_upload_requests where id = $1`,
+    [request.uploadId],
+  );
+
+  assert.equal(after.rows[0].envelope_id, null);
+  assert.notEqual(after.rows[0].used_at, null);
+  assert.equal(
+    (
+      await getUploadRequestStatus(
+        context.userId,
+        request.uploadId,
+        now + 10 * 60,
+        database,
+      )
+    )?.status,
+    "expired",
+  );
+});
+
 test("a failure after the link is claimed gives the link back and leaves no draft", async () => {
   const context = await createUser();
   const request = await createUploadRequest(

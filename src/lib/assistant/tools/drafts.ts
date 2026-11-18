@@ -24,6 +24,8 @@ import {
 const incomingSignerSchema = draftSignerSchema.omit({
   envelopeId: true,
   id: true,
+  // The order is the order of the list.
+  signOrder: true,
 });
 const incomingCopyRecipientSchema = copyRecipientSchema.omit({ id: true });
 

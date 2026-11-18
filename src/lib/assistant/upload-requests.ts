@@ -79,20 +79,26 @@ export type UploadRequestStatus = {
   status: "done" | "expired" | "waiting";
 };
 
+// How long a claimed link with no draft is still taken to be mid-upload.
+// After this, the claim is stale (the draft was deleted, or the server died
+// before it was made) and the link reports as no longer usable.
+export const UPLOAD_CLAIM_WINDOW_SECONDS = 5 * 60;
+
 function toStatus(row: StatusRow, now: number): UploadRequestStatus {
   const expiresAt = Number(row.expires_at);
+  const usedAt = row.used_at === null ? null : Number(row.used_at);
+  let status: UploadRequestStatus["status"] = "waiting";
 
-  return {
-    envelopeId: row.envelope_id,
-    expiresAt,
-    // A claimed link with no draft yet is still being received.
-    status:
-      row.used_at !== null && row.envelope_id !== null
-        ? "done"
-        : row.used_at === null && expiresAt <= now
-          ? "expired"
-          : "waiting",
-  };
+  if (usedAt !== null && row.envelope_id !== null) {
+    status = "done";
+  } else if (usedAt === null) {
+    status = expiresAt <= now ? "expired" : "waiting";
+  } else if (now - usedAt >= UPLOAD_CLAIM_WINDOW_SECONDS) {
+    // Claimed, but no draft came of it.
+    status = "expired";
+  }
+
+  return { envelopeId: row.envelope_id, expiresAt, status };
 }
 
 /** Where an upload request stands, for the sender it belongs to. */

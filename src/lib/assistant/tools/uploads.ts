@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import { envelopeTitleSchema } from "../../schemas/common.ts";
-import { resolveAppUrl } from "../../utils/env.ts";
 import {
   createUploadRequest,
   getUploadRequestStatus,
@@ -9,6 +8,7 @@ import {
 import {
   type AssistantTool,
   AssistantToolError,
+  appBaseUrl,
   draftLinks,
 } from "./shared.ts";
 
@@ -18,16 +18,6 @@ import {
 
 const startDraftInput = z.object({ title: envelopeTitleSchema });
 const getUploadInput = z.object({ uploadId: z.string().min(1).max(100) });
-
-function appBaseUrl(): string {
-  const appUrl = resolveAppUrl()?.replace(/\/+$/, "");
-
-  if (!appUrl) {
-    throw new Error("APP_URL is not set.");
-  }
-
-  return appUrl;
-}
 
 export const startDraft: AssistantTool<
   z.infer<typeof startDraftInput>,
@@ -73,7 +63,7 @@ export const getUpload: AssistantTool<
   }
 > = {
   description:
-    "Checks an upload link made by start_draft in SignuDoc. status is waiting until the PDF arrives, then done with the new draft's envelopeId and links to review it and place its fields, or expired after 30 minutes. This only reads.",
+    "Checks an upload link made by start_draft in SignuDoc. status is waiting until the PDF arrives, then done with the new draft's envelopeId and links to review it and place its fields, or expired once it can no longer be used (30 minutes, or a PDF that never became a draft). This only reads.",
   input: getUploadInput,
   name: "get_upload",
   rateLimit: { limit: 120, windowMs: 10 * 60 * 1000 },

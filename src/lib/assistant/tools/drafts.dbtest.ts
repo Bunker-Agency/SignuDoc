@@ -181,6 +181,52 @@ test("set_signers adds signers in order and returns their IDs", async () => {
   );
 });
 
+test("set_signers takes no signOrder: the order is the order of the list", async () => {
+  const ada = await createUser("Ada");
+  const envelopeId = await createDraft(ada.userId);
+  const server = buildAssistantServer(
+    ada,
+    new Request(`${ASSISTANT_TEST_BASE_URL}/api/mcp`, { method: "POST" }),
+  );
+  const client = new Client({ name: "test", version: "1.0.0" });
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+
+  await server.connect(serverSide);
+  await client.connect(clientSide);
+
+  try {
+    const { tools } = await client.listTools();
+    const schema = JSON.stringify(
+      tools.find((tool) => tool.name === "set_signers")?.inputSchema,
+    );
+
+    assert.ok(schema.includes("email"));
+    assert.ok(!schema.includes("signOrder"));
+  } finally {
+    await client.close();
+  }
+
+  // A model that sends signOrder anyway still gets list order.
+  const result = await callTool(ada, "set_signers", {
+    envelopeId,
+    signers: [
+      { email: "dana@example.com", name: "Dana", signOrder: 2 },
+      { email: "ada@example.com", name: "Ada", signOrder: 1 },
+    ],
+  });
+
+  assert.equal(result.isError, false, result.text);
+  assert.deepEqual(
+    (JSON.parse(result.text) as SignersBody).signers.map(
+      ({ email, signOrder }) => ({ email, signOrder }),
+    ),
+    [
+      { email: "dana@example.com", signOrder: 1 },
+      { email: "ada@example.com", signOrder: 2 },
+    ],
+  );
+});
+
 test("set_signers keeps the fields of an unchanged signer", async () => {
   const ada = await createUser("Ada");
   const envelopeId = await createDraft(ada.userId);

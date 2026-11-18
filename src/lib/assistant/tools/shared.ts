@@ -29,7 +29,7 @@ export class AssistantToolError extends Error {
   }
 }
 
-function appBaseUrl(): string {
+export function appBaseUrl(): string {
   const appUrl = resolveAppUrl()?.replace(/\/+$/, "");
 
   if (!appUrl) {
