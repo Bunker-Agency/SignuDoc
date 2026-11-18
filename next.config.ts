@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BOTID:
       process.env.VERCEL === "1" && process.env.BOTID === "1" ? "1" : "",
   },
+  // pdf.js reads the text of a draft's PDF on the server
+  // (src/lib/pdf-text.ts). Bundled, it can't find its own worker file, so
+  // Node loads it as an ordinary package instead.
+  serverExternalPackages: ["pdfjs-dist"],
   images: {
     unoptimized: true,
   },
@@ -28,6 +32,10 @@ const nextConfig: NextConfig = {
     "/api/**": [
       "./src/assets/fonts/*.ttf",
       "./node_modules/harfbuzzjs/dist/harfbuzz-subset.wasm",
+      // pdf.js loads its worker file in-process by a computed path when it
+      // reads a PDF's text (src/lib/pdf-text.ts), which tracing can't see.
+      "./node_modules/pdfjs-dist/legacy/build/pdf.mjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
     ],
   },
 };

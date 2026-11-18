@@ -1,6 +1,7 @@
 import { OrganizationSettings } from "@/components/settings/organization-settings";
 import { SettingsShell } from "@/components/settings/settings-shell";
 import { UpdatesPanel } from "@/components/settings/updates-panel";
+import { assistantConnectionsOn } from "@/lib/assistant/oauth";
 import { isAdminUser } from "@/lib/auth/admin";
 import { getAuthSession } from "@/lib/auth/server";
 import { toOrganizationSettingsView } from "@/lib/organization-settings";
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-8">
       <SettingsShell
+        assistantConnections={await assistantConnectionsOn()}
         initialProfile={{
           email: session?.user.email ?? "",
           fullName: session?.user.name ?? "",

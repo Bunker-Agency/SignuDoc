@@ -6,6 +6,7 @@ import {
   isAPIError,
 } from "better-auth/api";
 
+import { endAssistantConnectionsForUser } from "../assistant/connections.ts";
 import { getDb, queryOne } from "../db/connection.ts";
 import { logSecurityEvent } from "../security/logging.ts";
 import { enforceSessionLimits } from "../session-controls.ts";
@@ -44,9 +45,11 @@ const SECOND_STEP_PATHS = new Set([
   "/two-factor/verify-totp",
 ]);
 
-// Paths whose actor is only known before the endpoint runs: each replaces
-// or ends the session it was called with.
+// Paths whose actor is read before the endpoint runs: each replaces or
+// ends the session it was called with, or (revoke-other-sessions) the rest
+// of the account's sessions.
 const SESSION_FIRST_PATHS = new Set([
+  "/revoke-other-sessions",
   "/revoke-sessions",
   "/sign-out",
   "/two-factor/disable",
@@ -54,6 +57,7 @@ const SESSION_FIRST_PATHS = new Set([
 ]);
 
 const SESSION_FIRST_EVENTS: Record<string, SystemAuditEventType> = {
+  "/revoke-other-sessions": "sessions_revoked",
   "/revoke-sessions": "sessions_revoked",
   "/sign-out": "signed_out",
   "/two-factor/disable": "two_factor_disabled",
@@ -79,6 +83,14 @@ function skipsSessionLimits(path: string): boolean {
   );
 }
 
+// Signing out everywhere (or everywhere else) also ends every AI
+// assistant's connection to the account: someone who suspects their account
+// is in the wrong hands wants all of it shut, not only the browsers.
+const ENDS_ASSISTANT_CONNECTIONS = new Set([
+  "/revoke-other-sessions",
+  "/revoke-sessions",
+]);
+
 type Actor = { email: string; userId: string };
 
 type HookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
@@ -95,6 +107,12 @@ function readEmail(body: unknown): string | null {
   }
 
   return null;
+}
+
+function readBodyField(body: unknown, field: string): unknown {
+  return typeof body === "object" && body !== null && field in body
+    ? (body as Record<string, unknown>)[field]
+    : undefined;
 }
 
 function readUser(value: unknown): { email: string; id: string } | null {
@@ -368,6 +386,16 @@ export function signInEvents() {
                   event: "password_changed",
                   targetUserId: user.id,
                 });
+
+                // The settings page signs the other devices out with a new
+                // password, which is the same as signing out everywhere
+                // else.
+                if (readBodyField(ctx.body, "revokeOtherSessions") === true) {
+                  await endAssistantConnectionsForUser(
+                    user.id,
+                    "sessions_revoked",
+                  );
+                }
               }
 
               return;
@@ -387,6 +415,15 @@ export function signInEvents() {
               event: SESSION_FIRST_EVENTS[path] ?? "signed_out",
               targetUserId: actor.userId,
             });
+
+            // Not caught: if the connections could not be ended, the
+            // request answers with an error rather than look complete.
+            if (ENDS_ASSISTANT_CONNECTIONS.has(path)) {
+              await endAssistantConnectionsForUser(
+                actor.userId,
+                "sessions_revoked",
+              );
+            }
           }),
         },
       ],

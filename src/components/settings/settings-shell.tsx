@@ -5,6 +5,7 @@ import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useBranding } from "@/components/layout/branding-provider";
 import { FieldShell, ShellButton } from "@/components/shared/form-shell";
 import { PageHeader } from "@/components/shared/page-header";
+import { ConnectedAppsPanel } from "@/components/settings/connected-apps-panel";
 import { SessionsPanel } from "@/components/settings/sessions-panel";
 import { TwoFactorPanel } from "@/components/settings/two-factor-panel";
 import {
@@ -21,6 +22,7 @@ const CLOSURE_CONFIRMATION_PHRASE = "close my account";
 const GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again.";
 
 type SettingsShellProps = {
+  assistantConnections?: boolean;
   initialProfile?: ProfileValues;
   twoFactor?: { enabled: boolean; required: boolean };
 };
@@ -162,6 +164,7 @@ function isNoOpEmailChangeMessage(message: string) {
 }
 
 export function SettingsShell({
+  assistantConnections = false,
   initialProfile = defaultProfileValues,
   twoFactor = { enabled: false, required: false },
 }: SettingsShellProps) {
@@ -666,6 +669,8 @@ export function SettingsShell({
           />
 
           <SessionsPanel />
+
+          {assistantConnections ? <ConnectedAppsPanel /> : null}
 
           <div className="panel p-6 sm:p-8">
             <div className="space-y-5">

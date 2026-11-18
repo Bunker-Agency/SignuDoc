@@ -1,5 +1,6 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
+import { refuseDiscoveryWhileOff } from "@/lib/assistant/discovery";
 import { getAuth } from "@/lib/auth/server";
 import { rejectBots } from "@/lib/security/botid";
 
@@ -15,24 +16,36 @@ function getHandlers(): AuthHandlers {
   return cachedHandlers;
 }
 
-export function DELETE(request: Request) {
-  return getHandlers().DELETE(request);
+// The OAuth discovery documents for AI assistants are answered by the auth
+// server before its hooks run, so they are refused here while assistant
+// connections are off (and again inside the auth server).
+
+export async function DELETE(request: Request) {
+  return (
+    (await refuseDiscoveryWhileOff(request)) ?? getHandlers().DELETE(request)
+  );
 }
 
-export function GET(request: Request) {
-  return getHandlers().GET(request);
+export async function GET(request: Request) {
+  return (await refuseDiscoveryWhileOff(request)) ?? getHandlers().GET(request);
 }
 
-export function PATCH(request: Request) {
-  return getHandlers().PATCH(request);
+export async function PATCH(request: Request) {
+  return (
+    (await refuseDiscoveryWhileOff(request)) ?? getHandlers().PATCH(request)
+  );
 }
 
 export async function POST(request: Request) {
   // Sign-in, sign-up and the routes that send email are checked by BotID
   // first, where that is turned on.
-  return (await rejectBots(request)) ?? getHandlers().POST(request);
+  return (
+    (await refuseDiscoveryWhileOff(request)) ??
+    (await rejectBots(request)) ??
+    getHandlers().POST(request)
+  );
 }
 
-export function PUT(request: Request) {
-  return getHandlers().PUT(request);
+export async function PUT(request: Request) {
+  return (await refuseDiscoveryWhileOff(request)) ?? getHandlers().PUT(request);
 }

@@ -5,6 +5,7 @@ import { after, before, beforeEach, test } from "node:test";
 
 import type pg from "pg";
 
+import { signedOAuthQuery } from "./assistant/signed-query.ts";
 import type { createAppAuth as CreateAppAuth } from "./auth/server.ts";
 import { replaceDbPoolForTests } from "./db/connection.ts";
 import { openTestDatabase } from "./db/test-database.ts";
@@ -210,6 +211,7 @@ before(async () => {
 
 beforeEach(async () => {
   await database.query(`truncate public."user" cascade`);
+  await database.query(`delete from public."oauthClient"`);
   await database.query("delete from public.system_audit_events");
   await database.query("delete from public.app_settings");
   await database.query("delete from public.rate_limits");
@@ -221,6 +223,7 @@ beforeEach(async () => {
 
 after(async () => {
   await database.query(`truncate public."user" cascade`);
+  await database.query(`delete from public."oauthClient"`);
   await database.query("delete from public.system_audit_events");
   await database.query("delete from public.app_settings");
   await database.query("delete from public.rate_limits");
@@ -656,4 +659,77 @@ test("confirming an authenticator with a leftover challenge cookie is recorded a
   assert.equal(verified.status, 200, JSON.stringify(verified.payload));
   assert.equal((await events("two_factor_enabled"))[0]?.actorUserId, userId);
   assert.equal((await events("sign_in_succeeded")).length, before);
+});
+
+test("the second step picks up an AI assistant's authorization where it left off", async () => {
+  const resource = `${BASE_URL}/api/mcp`;
+
+  await saveSettings({ assistantConnections: true }, database);
+  invalidateSettingsCache();
+  await database.query(
+    `insert into public."oauthResource" (id, identifier, name, "createdAt", "updatedAt")
+       values ($1, $2, 'SignuDoc MCP', now(), now())
+       on conflict (identifier) do nothing`,
+    [randomUUID(), resource],
+  );
+  await createVerifiedUser("pat@acme.com");
+
+  const { backupCodes, totpURI } = await enableTwoFactor("pat@acme.com");
+  const registered = await call("/oauth2/register", {
+    client_name: "Claude Code",
+    redirect_uris: ["http://127.0.0.1:33418/callback"],
+    token_endpoint_auth_method: "none",
+  });
+
+  assert.equal(registered.status, 201, JSON.stringify(registered.payload));
+
+  // Signed out, the provider sends the browser to the sign-in page with the
+  // request signed. The page keeps that address through the second step.
+  const signedOut = await auth.handler(
+    new Request(
+      `${BASE_URL}/api/auth/oauth2/authorize?${new URLSearchParams({
+        client_id: String(registered.payload?.client_id),
+        code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        code_challenge_method: "S256",
+        redirect_uri: "http://127.0.0.1:33418/callback",
+        resource,
+        response_type: "code",
+        scope: "envelopes:read drafts:write offline_access",
+        state: "state-123",
+      }).toString()}`,
+      { headers: { accept: "application/json" } },
+    ),
+  );
+  const login = new URL(
+    String(((await signedOut.json()) as { url?: string }).url),
+    BASE_URL,
+  );
+
+  assert.equal(login.pathname, "/login");
+
+  const oauthQuery = signedOAuthQuery(login.search);
+
+  for (const [path, code] of [
+    ["/two-factor/verify-totp", totp(totpURI)],
+    ["/two-factor/verify-backup-code", backupCodes[0]],
+  ] as const) {
+    const cookies: Cookies = new Map();
+    const first = await call(
+      "/sign-in/email",
+      { email: "pat@acme.com", oauth_query: oauthQuery, password: PASSWORD },
+      cookies,
+    );
+
+    assert.equal(first.payload?.twoFactorRedirect, true, path);
+
+    const second = await call(path, { code, oauth_query: oauthQuery }, cookies);
+
+    assert.equal(second.status, 200, JSON.stringify(second.payload));
+    assert.equal(second.payload?.redirect, true, path);
+    assert.equal(
+      new URL(String(second.payload?.url), BASE_URL).pathname,
+      "/oauth/consent",
+      path,
+    );
+  }
 });

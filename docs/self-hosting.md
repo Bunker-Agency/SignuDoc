@@ -70,7 +70,7 @@ To clear it, make the database's values write-only. This stays inside Vercel:
 4. While you are in the project, add a `BETTER_AUTH_SECRET` environment variable (Production, as a Secret) with a value from `openssl rand -hex 32`, so later password changes leave sign-ins alone.
 5. Open **Deployments** and redeploy the latest production deployment.
 
-Do this right after the deploy, before people use the site. Unless `BETTER_AUTH_SECRET` was already set, the site's own secret comes from the database password, so step 3 (and step 4) changes it: everyone is signed out, the site makes a new key for sealing documents (PDFs sealed before still verify, under the old certificate), and anyone in the middle of signing with an outside signing provider has to start that step again.
+Do this right after the deploy, before people use the site. Unless `BETTER_AUTH_SECRET` was already set, the site's own secret comes from the database password, so step 3 (and step 4) changes it: everyone is signed out, the site makes a new key for sealing documents (PDFs sealed before still verify, under the old certificate), and anyone in the middle of signing with an outside signing provider has to start that step again. If AI assistant connections are on, the signing key behind them was encrypted with the old secret too: run `delete from jwks;` in the Neon console's SQL editor, and every assistant has to connect again.
 
 After this, preview deployments have no database and open on the page that asks you to connect one. That only matters if you build changes on branches before putting them live.
 
@@ -167,6 +167,8 @@ These cover the people with an account (senders and administrators). Signers who
   update "user" set "twoFactorEnabled" = false;
   delete from "twoFactor";
   ```
+
+  If AI assistant connections are on, also run `delete from jwks;`. The key that signs assistants' tokens is encrypted with the secret too, and until it is cleared no assistant can connect or stay connected. Every assistant has to connect again afterwards.
 
   Then change the secret and deploy. Everyone signs in with their password alone once, and sets up two-step sign-in again (an install that requires it asks at once). The site audit trail does not show this reset, so record it with the incident.
 
