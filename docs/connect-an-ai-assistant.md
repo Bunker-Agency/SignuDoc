@@ -60,7 +60,7 @@ Treat the link like a password until you have used it.
 
 ## Placing fields by text
 
-The assistant reads the words on each page and puts a field next to a label, for example a signature to the right of "Signature:". It uses the same default field sizes as the prepare page.
+The assistant reads the words on each page and puts a field next to a label, for example a signature to the right of "Signature:". It uses the same default field sizes as the prepare page, except that Name, Date, Text and similar boxes are sized to the line of text they sit by, so they fit in table rows. The assistant can also set a field's width and height in points.
 
 - The assistant is told to put a Name, Job title or Company field, not a Text field, next to a label such as "Name:", "Title:" or "Company:", so it fills in from the signer's details like one placed on the prepare page. Check the field types when you review the draft.
 - This needs a PDF with a text layer. A scanned PDF has none, and the assistant will say so. Then place the fields yourself on the prepare page.

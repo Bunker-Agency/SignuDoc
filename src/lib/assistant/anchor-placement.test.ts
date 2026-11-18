@@ -7,6 +7,9 @@ import {
   ANCHOR_GAP_PT,
   type AnchoredField,
   DEFAULT_FIELD_SIZE_FRACTIONS,
+  LINE_FIT_FACTOR,
+  LINE_FIT_FIELD_TYPES,
+  LINE_FIT_MIN_PT,
   resolveAnchoredFields,
 } from "./anchor-placement.ts";
 
@@ -234,4 +237,156 @@ test("sizes a field as a fraction of the page, on any page size", () => {
   assert.ok(placed);
   assert.equal(placed.width, DEFAULT_FIELD_SIZE_FRACTIONS.signature.width);
   assert.equal(placed.height, DEFAULT_FIELD_SIZE_FRACTIONS.signature.height);
+});
+
+const near = (actual: number, expected: number) =>
+  assert.ok(Math.abs(actual - expected) < 1e-5, `${actual} vs ${expected}`);
+
+test("fits a name field to the line of 10 pt text", () => {
+  const [placed] = placements(
+    [page([label("Name:", 72, 700, 40, 10)])],
+    [field("Name:", "right", { type: "name" })],
+  );
+
+  assert.ok(placed);
+  assert.deepEqual([...LINE_FIT_FIELD_TYPES].sort(), [
+    "company",
+    "date",
+    "dropdown",
+    "job_title",
+    "name",
+    "number",
+    "text",
+  ]);
+  near(placed.height, (LINE_FIT_FACTOR * 10) / 792);
+  assert.equal(placed.width, DEFAULT_FIELD_SIZE_FRACTIONS.name.width);
+});
+
+test("a date next to 6 pt text gets the minimum height", () => {
+  const [placed] = placements(
+    [page([label("Date:", 72, 700, 30, 6)])],
+    [field("Date:", "right", { type: "date" })],
+  );
+
+  assert.ok(placed);
+  near(placed.height, LINE_FIT_MIN_PT / 792);
+});
+
+test("a text field next to very large text stays at the default height", () => {
+  const [placed] = placements(
+    [page([label("Big", 72, 600, 90, 40)])],
+    [field("Big", "right", { type: "text" })],
+  );
+
+  assert.ok(placed);
+  assert.equal(placed.height, DEFAULT_FIELD_SIZE_FRACTIONS.text.height);
+});
+
+test("a signature keeps its default size next to small text", () => {
+  const [placed] = placements(
+    [page([label("Sign", 72, 700, 40, 10)])],
+    [field("Sign", "right")],
+  );
+
+  assert.ok(placed);
+  assert.equal(placed.height, DEFAULT_FIELD_SIZE_FRACTIONS.signature.height);
+  assert.equal(placed.width, DEFAULT_FIELD_SIZE_FRACTIONS.signature.width);
+});
+
+test("explicit width and height are used as given", () => {
+  const [placed] = placements(
+    [page([label("Name:", 72, 700, 40, 10)])],
+    [field("Name:", "right", { height: 20, type: "name", width: 153 })],
+  );
+
+  assert.ok(placed);
+  near(placed.width, 153 / 612);
+  near(placed.height, 20 / 792);
+});
+
+test("giving only a height keeps the automatic width", () => {
+  const [placed] = placements(
+    [page([label("Sign", 72, 700, 40, 10)])],
+    [field("Sign", "right", { height: 30 })],
+  );
+
+  assert.ok(placed);
+  near(placed.height, 30 / 792);
+  assert.equal(placed.width, DEFAULT_FIELD_SIZE_FRACTIONS.signature.width);
+});
+
+test("a width larger than the page is clamped and stays inside it", () => {
+  const [placed] = placements(
+    [page([label("Name:", 72, 700, 40, 10)])],
+    [field("Name:", "right", { type: "name", width: 2000 })],
+  );
+
+  assert.ok(placed);
+  assert.equal(placed.width, 1);
+  assert.ok(placed.x >= 0 && placed.x + placed.width <= 1 + 1e-9);
+});
+
+test("line-fit applies to exactly these types", () => {
+  assert.deepEqual([...LINE_FIT_FIELD_TYPES].sort(), [
+    "company",
+    "date",
+    "dropdown",
+    "job_title",
+    "name",
+    "number",
+    "text",
+  ]);
+});
+
+test("a number below 10 pt text is fitted to the line", () => {
+  const [placed] = placements(
+    [page([label("Amount", 72, 700, 50, 10)])],
+    [field("Amount", "below", { type: "number" })],
+  );
+
+  assert.ok(placed);
+  near(placed.height, 16 / 792);
+  assert.equal(placed.width, DEFAULT_FIELD_SIZE_FRACTIONS.number.width);
+});
+
+test("a text field over 10 pt text is fitted to the line", () => {
+  const [placed] = placements(
+    [page([label("[Name]", 72, 700, 50, 10)])],
+    [field("[Name]", "over", { type: "text" })],
+  );
+
+  assert.ok(placed);
+  near(placed.height, 16 / 792);
+});
+
+test("an explicit width wins over a wider anchor when placed over it", () => {
+  const [placed] = placements(
+    [page([label("[Name placeholder]", 72, 700, 200, 10)])],
+    [field("[Name placeholder]", "over", { type: "text", width: 50 })],
+  );
+
+  assert.ok(placed);
+  near(placed.width, 50 / 612);
+  near(placed.x + placed.width / 2, (72 + 100) / 612);
+});
+
+test("over widens to the anchor only when no width is given", () => {
+  const [placed] = placements(
+    [page([label("[Name placeholder]", 72, 700, 200, 10)])],
+    [field("[Name placeholder]", "over", { type: "text" })],
+  );
+
+  assert.ok(placed);
+  near(placed.width, 200 / 612);
+});
+
+test("sizes in points come out with each placement", () => {
+  const result = resolveAnchoredFields(
+    [page([label("Name:", 72, 700, 40, 10)])],
+    signers,
+    [field("Name:", "right", { height: 20, type: "name", width: 100 })],
+  );
+
+  assert.ok(result.ok);
+  assert.deepEqual(result.sizesPt, [{ heightPt: 20, widthPt: 100 }]);
 });
