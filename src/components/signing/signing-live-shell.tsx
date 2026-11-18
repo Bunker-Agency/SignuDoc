@@ -39,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -52,6 +53,12 @@ import {
   isNumberEntry,
   NUMBER_ENTRY_MESSAGE,
 } from "@/lib/field-choices";
+import {
+  MAX_SIGNER_DETAIL_LENGTH,
+  type SignerDetailNeed,
+  signerDetailsAsked,
+  signerDetailValueForField,
+} from "@/lib/signer-details";
 
 const typedSignatureFont =
   '"Snell Roundhand", "Brush Script MT", "Segoe Script", cursive';
@@ -145,6 +152,12 @@ function getCanvasFieldLabel(
       return "Choose";
     case "radio":
       return "Option";
+    case "name":
+      return "Name";
+    case "job_title":
+      return "Job title";
+    case "company":
+      return "Company";
     default:
       return "Field";
   }
@@ -184,6 +197,12 @@ function getFieldLabel(
       return "Choose one";
     case "radio":
       return "Option";
+    case "name":
+      return "Name";
+    case "job_title":
+      return "Job title";
+    case "company":
+      return "Company";
     default:
       return "Field";
   }
@@ -194,9 +213,32 @@ type EnteredValues = {
   /** Checkboxes and radio buttons. */
   checkboxValues: Record<string, boolean>;
   signatureValues: Record<string, SignatureEntry>;
+  /**
+   * The job title and company from the "Your details" card. Every Job title
+   * and Company box shows the same answer.
+   */
+  signerDetails: SignerDetailEntries;
   /** Text, number and dropdown fields. */
   textValues: Record<string, string>;
 };
+
+/** What the signer has typed in the "Your details" card, untrimmed. */
+type SignerDetailEntries = { company: string; jobTitle: string };
+
+/** The card's answer for a Job title or Company box, or "" for others. */
+function getSignerDetailEntry(
+  field: Pick<SigningCurrentField, "type">,
+  signerDetails: SignerDetailEntries,
+) {
+  switch (field.type) {
+    case "job_title":
+      return signerDetails.jobTitle.trim();
+    case "company":
+      return signerDetails.company.trim();
+    default:
+      return "";
+  }
+}
 
 /** The radio buttons that are answered together with this one. */
 function getRadioGroup(
@@ -239,6 +281,10 @@ function getSummaryLabel(field: SigningCurrentField) {
       return "Dropdown";
     case "radio":
       return "Choice";
+    case "job_title":
+      return "Job title";
+    case "company":
+      return "Company";
     default:
       return "Field";
   }
@@ -252,7 +298,9 @@ function isActionSummaryField(field: SigningCurrentField) {
   if (
     field.type === "text" ||
     field.type === "number" ||
-    field.type === "dropdown"
+    field.type === "dropdown" ||
+    field.type === "job_title" ||
+    field.type === "company"
   ) {
     return true;
   }
@@ -271,6 +319,7 @@ function getCompletionValue(
     checkboxValues,
     localDateLabel,
     signatureValues,
+    signerDetails,
     textValues,
   }: EnteredValues & { localDateLabel: string },
 ) {
@@ -292,6 +341,10 @@ function getCompletionValue(
     return textValues[field.id]?.trim() || "Choose one";
   }
 
+  if (field.type === "job_title" || field.type === "company") {
+    return getSignerDetailEntry(field, signerDetails) || getFieldLabel(field);
+  }
+
   if (field.type === "checkbox") {
     return checkboxValues[field.id] ? "Checked" : "Optional";
   }
@@ -310,10 +363,18 @@ function getCompletionValue(
 function isFieldComplete(
   field: SigningCurrentField,
   fields: readonly SigningCurrentField[],
-  { checkboxValues, signatureValues, textValues }: EnteredValues,
+  { checkboxValues, signatureValues, signerDetails, textValues }: EnteredValues,
 ) {
   if (field.type === "signature" || field.type === "initials") {
     return Boolean(signatureValues[field.id]?.value);
+  }
+
+  // Answered in the "Your details" card. A name box is never asked: like
+  // the date, it is filled in for the signer.
+  if (field.type === "job_title" || field.type === "company") {
+    return (
+      !field.required || getSignerDetailEntry(field, signerDetails).length > 0
+    );
   }
 
   if (field.type === "number" && hasInvalidNumber(field, textValues)) {
@@ -364,7 +425,7 @@ function getVisibleFieldValue(field: SigningVisibleField) {
 
 function buildSigningSubmissionPayload(
   record: SigningPayload,
-  { checkboxValues, signatureValues, textValues }: EnteredValues,
+  { checkboxValues, signatureValues, signerDetails, textValues }: EnteredValues,
 ): SigningSubmission {
   const fields: SigningSubmission["fields"] = [];
 
@@ -422,9 +483,21 @@ function buildSigningSubmissionPayload(
     }
   }
 
+  // Name, Job title and Company boxes are never sent one by one: the server
+  // fills them all from the signer's name and these details. Only what the
+  // document asks for, and what was actually typed, is sent.
+  const asked = signerDetailsAsked(record.currentSignerFields);
+  const company = asked.company ? signerDetails.company.trim() : "";
+  const jobTitle = asked.jobTitle ? signerDetails.jobTitle.trim() : "";
+  const details: NonNullable<SigningSubmission["signerDetails"]> = {
+    ...(company ? { company } : {}),
+    ...(jobTitle ? { jobTitle } : {}),
+  };
+
   return {
     clientTimezoneOffsetMinutes: new Date().getTimezoneOffset(),
     fields,
+    ...(company || jobTitle ? { signerDetails: details } : {}),
   };
 }
 
@@ -503,6 +576,18 @@ export function SigningLiveShell({
     useState<SignatureModalState | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [textValues, setTextValues] = useState<Record<string, string>>({});
+  // The job title and company the document's boxes ask for, typed once in
+  // the "Your details" card. Nothing is saved before Finish, so a reload
+  // starts with an empty card.
+  const signerDetailsNeeded = signerDetailsAsked(record.currentSignerFields);
+  const [signerDetails, setSignerDetails] = useState<SignerDetailEntries>({
+    company: "",
+    jobTitle: "",
+  });
+  const [isDetailsOpen, setIsDetailsOpen] = useState(
+    signerDetailsNeeded.company !== null ||
+      signerDetailsNeeded.jobTitle !== null,
+  );
   const [drawnSignatureVersion, setDrawnSignatureVersion] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_DOCUMENT_ZOOM_LEVEL);
   const [localDateLabel] = useState(() =>
@@ -527,6 +612,7 @@ export function SigningLiveShell({
   const enteredValues: EnteredValues = {
     checkboxValues,
     signatureValues,
+    signerDetails,
     textValues,
   };
   // A group of radio buttons is one question: it is listed and counted once.
@@ -975,6 +1061,7 @@ export function SigningLiveShell({
                                   return next;
                                 });
                               }}
+                              onDetailClick={() => setIsDetailsOpen(true)}
                               onSignatureClick={() =>
                                 handleSignatureFieldClick(field)
                               }
@@ -986,6 +1073,15 @@ export function SigningLiveShell({
                                 }));
                               }}
                               signatureEntry={signatureValues[field.id]}
+                              signerDetailValue={signerDetailValueForField(
+                                field.type,
+                                {
+                                  company: signerDetails.company.trim() || null,
+                                  jobTitle:
+                                    signerDetails.jobTitle.trim() || null,
+                                  name: record.signer.name,
+                                },
+                              )}
                               textValue={textValues[field.id] ?? ""}
                             />
                           ))
@@ -1321,6 +1417,24 @@ export function SigningLiveShell({
         </DialogFrame>
       ) : null}
 
+      {consentedAt !== null && isDetailsOpen && !isDeclineDialogOpen ? (
+        <SignerDetailsDialog
+          asked={signerDetailsNeeded}
+          onChange={(next) => {
+            setSubmitError(null);
+            setSignerDetails(next);
+          }}
+          onContinue={() => setIsDetailsOpen(false)}
+          onDecline={() => {
+            setDeclineError(null);
+            setIsDeclineDialogOpen(true);
+          }}
+          senderName={record.senderName}
+          signerName={record.signer.name}
+          values={signerDetails}
+        />
+      ) : null}
+
       {isDeclineDialogOpen ? (
         <DialogFrame
           description={`The sender (${record.senderName}) will be notified that you declined. This cannot be undone.`}
@@ -1436,9 +1550,11 @@ function CurrentSignerField({
   isInvalid,
   localDateLabel,
   onCheckboxChange,
+  onDetailClick,
   onSignatureClick,
   onTextChange,
   signatureEntry,
+  signerDetailValue,
   textValue,
 }: {
   checkboxValue: boolean;
@@ -1447,9 +1563,13 @@ function CurrentSignerField({
   isInvalid: boolean;
   localDateLabel: string;
   onCheckboxChange: (checked: boolean) => void;
+  /** Opens the "Your details" card, where Job title and Company are typed. */
+  onDetailClick: () => void;
   onSignatureClick: () => void;
   onTextChange: (value: string) => void;
   signatureEntry?: SignatureEntry;
+  /** What a Name, Job title or Company box holds, or null while empty. */
+  signerDetailValue: string | null;
   textValue: string;
 }) {
   const frame = getFieldFrame(field);
@@ -1521,6 +1641,56 @@ function CurrentSignerField({
           </p>
         ) : null}
       </div>
+    );
+  }
+
+  // The name is shown as the sender entered it: nobody types into it.
+  if (field.type === "name") {
+    return (
+      <div
+        className="absolute z-2 overflow-hidden rounded-[0.375rem] border border-(--border-strong) bg-white/92 text-sm text-(--fg)"
+        data-signing-field="true"
+        style={frame}
+      >
+        {showInlineValue ? (
+          <p className="flex h-full items-center truncate px-2 text-[12px] font-semibold">
+            {signerDetailValue || getFieldLabel(field)}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  // Job title and company are typed once, in the "Your details" card, and
+  // every box of the kind shows the same answer.
+  if (field.type === "job_title" || field.type === "company") {
+    const label = getFieldLabel(field);
+
+    return (
+      <button
+        aria-label={
+          signerDetailValue ? `${label}: ${signerDetailValue}` : label
+        }
+        className={`absolute z-2 overflow-hidden rounded-[0.375rem] border-2 border-(--accent) text-left text-(--fg) transition ${
+          signerDetailValue
+            ? "bg-[rgb(var(--accent-rgb)/0.10)]"
+            : "bg-[rgb(var(--accent-rgb)/0.07)] hover:bg-[rgb(var(--accent-rgb)/0.16)]"
+        }`}
+        data-signing-field="true"
+        onClick={onDetailClick}
+        style={frame}
+        type="button"
+      >
+        {signerDetailValue && showInlineValue ? (
+          <span className="pointer-events-none flex h-full items-center truncate px-2 text-sm">
+            {signerDetailValue}
+          </span>
+        ) : showInlineLabel ? (
+          <span className="pointer-events-none flex h-full items-center truncate px-2 text-xs font-bold text-(--accent-ink)">
+            {label}
+          </span>
+        ) : null}
+      </button>
     );
   }
 
@@ -2136,6 +2306,88 @@ function SignatureDrawCanvas({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SignerDetailsDialog({
+  asked,
+  onChange,
+  onContinue,
+  onDecline,
+  senderName,
+  signerName,
+  values,
+}: {
+  asked: { company: SignerDetailNeed; jobTitle: SignerDetailNeed };
+  onChange: (values: SignerDetailEntries) => void;
+  onContinue: () => void;
+  onDecline: () => void;
+  senderName: string;
+  signerName: string;
+  values: SignerDetailEntries;
+}) {
+  const inputs = [
+    {
+      autoComplete: "organization-title",
+      key: "jobTitle",
+      label: "Job title",
+      need: asked.jobTitle,
+    },
+    {
+      autoComplete: "organization",
+      key: "company",
+      label: "Company",
+      need: asked.company,
+    },
+  ] as const;
+  const canContinue = inputs.every(
+    (input) => input.need !== "required" || values[input.key].trim().length > 0,
+  );
+
+  return (
+    <DialogFrame
+      description={`Your name is shown as ${senderName} entered it. Add the details this document asks for.`}
+      onClose={() => {
+        // Closing is the same as Continue, and waits for what is required.
+        if (canContinue) {
+          onContinue();
+        }
+      }}
+      title="Your details"
+    >
+      <div className="well rounded-xl px-3.5 py-3">
+        <p className="text-xs font-semibold text-(--tertiary)">Name</p>
+        <p className="mt-0.5 text-sm font-semibold text-(--fg)">{signerName}</p>
+      </div>
+      {inputs.map((input) =>
+        input.need === null ? null : (
+          <label className="grid gap-1.5" key={input.key}>
+            <span className="text-[0.8125rem] font-semibold text-(--secondary)">
+              {input.label}
+            </span>
+            <Input
+              aria-required={input.need === "required" ? true : undefined}
+              autoComplete={input.autoComplete}
+              id={`signer-detail-${input.key}`}
+              maxLength={MAX_SIGNER_DETAIL_LENGTH}
+              name={`signer-detail-${input.key}`}
+              onChange={(event) =>
+                onChange({ ...values, [input.key]: event.target.value })
+              }
+              value={values[input.key]}
+            />
+          </label>
+        ),
+      )}
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <ShellButton onClick={onDecline} variant="secondary">
+          Decline
+        </ShellButton>
+        <ShellButton disabled={!canContinue} onClick={onContinue}>
+          Continue
+        </ShellButton>
+      </div>
+    </DialogFrame>
   );
 }
 
