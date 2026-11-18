@@ -266,6 +266,8 @@ test("an assistant connects, prepares a draft, and the sender sees it", async ({
 
       // Signed out, the link sends the sender to sign in and back.
       await page.context().clearCookies();
+      // Sign-ins from one address are rate limited; this is another one.
+      await database.query("delete from public.rate_limits");
       await page.goto(viaPage.uploadPageUrl);
       await expect(page).toHaveURL(/\/login\?/);
       await page.getByLabel("Email").fill(senderEmail);
