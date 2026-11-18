@@ -50,7 +50,7 @@ A draft made this way records in its audit trail that it came from an assistant,
 
 ## Getting the PDF in: the upload link
 
-An assistant can't pass a file through the connection. So when it starts a draft it gets a one-time upload link and gives it to you.
+An assistant can't pass a file through the connection. So when it starts a draft it gets a one-time upload link and gives it to you. There is no draft until you drop the PDF on that link: nothing appears on your review page before then.
 
 - Open the link. If you aren't signed in, sign in first, as the same person who approved the assistant. Then drop the PDF on the page.
 - The link works once and expires after 30 minutes.
