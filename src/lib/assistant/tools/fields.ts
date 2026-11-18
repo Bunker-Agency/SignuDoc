@@ -101,7 +101,7 @@ export const placeFields: AssistantTool<
   }
 > = {
   description:
-    "Places fields on a draft in SignuDoc by the text they sit next to. For each field give the signer (an email address or id from get_envelope), the field type, and an anchor: the text to find (as read with get_document_text), which side to put the field on (right, below or over), and optionally which occurrence (default 1) or page. This replaces every field already on the draft. If any anchor can't be found or any signer doesn't match, nothing is saved and every problem is listed. Drafts only. Nothing is sent or emailed: tell the sender to open the prepare link to check the fields and send in SignuDoc.",
+    'Places fields on a draft in SignuDoc by the text they sit next to. For each field give the signer (an email address or id from get_envelope), the field type, and an anchor: the text to find (as read with get_document_text), which side to put the field on (right, below or over), and optionally which occurrence (default 1) or page. For a signer\'s name, job title or company (labels such as "Name:", "Title:", "Position:" or "Company:"), use the name, job_title or company type, not text: these fill in by themselves when the signer finishes, from the name the sender entered and from details the signer gives once. A name field is always required; job_title and company may be optional. This replaces every field already on the draft. If any anchor can\'t be found or any signer doesn\'t match, nothing is saved and every problem is listed. Drafts only. Nothing is sent or emailed: tell the sender to open the prepare link to check the fields and send in SignuDoc.',
   input: placeFieldsInput,
   name: "place_fields",
   rateLimit: { limit: 60, windowMs: 10 * 60 * 1000 },
