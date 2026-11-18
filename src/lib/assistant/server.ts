@@ -12,6 +12,7 @@ import { getRequestPathname } from "../security/request.ts";
 import { DocumentImportError } from "../services/document-import.ts";
 import { TemplateError } from "../templates.ts";
 import type { AssistantContext } from "./guard.ts";
+import { DRAFT_TOOLS } from "./tools/drafts.ts";
 import { ENVELOPE_TOOLS } from "./tools/envelopes.ts";
 import { FIELD_TOOLS } from "./tools/fields.ts";
 import { type AssistantTool, AssistantToolError } from "./tools/shared.ts";
@@ -31,6 +32,7 @@ export const ASSISTANT_TOOLS: Array<AssistantTool<unknown, unknown>> = [
   ...ENVELOPE_TOOLS,
   ...UPLOAD_TOOLS,
   ...FIELD_TOOLS,
+  ...DRAFT_TOOLS,
 ];
 
 const SERVER_INFO = { name: "SignuDoc", version: "1.0.0" };
